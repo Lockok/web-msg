@@ -3,19 +3,19 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func ConnectDB(ctx context.Context, dbURL string) (*pgx.Conn, error) {
-	conn, err := pgx.Connect(ctx, dbURL)
+func ConnectDB(ctx context.Context, dbURL string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := conn.Ping(ctx); err != nil {
-		conn.Close(ctx)
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
 		return nil, err
 	}
 
-	return conn, nil
+	return pool, nil
 }
