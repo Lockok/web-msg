@@ -8,6 +8,7 @@ import (
 )
 
 var ErrUsernameExists = errors.New("username already exists")
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 type User struct {
 	ID           uuid.UUID

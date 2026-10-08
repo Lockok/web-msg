@@ -46,3 +46,23 @@ func (s *UserService) Register(ctx context.Context, username string, password st
 
 	return createdUser, nil
 }
+
+func (s *UserService) Login(
+    ctx context.Context,
+    username string,
+    password string,
+) (*domain.User, error) {
+    user, err := s.users.GetByUsername(ctx, username)
+    if err != nil {
+        return nil, domain.ErrInvalidCredentials
+    }
+
+    if err := bcrypt.CompareHashAndPassword(
+        []byte(user.PasswordHash),
+        []byte(password),
+    ); err != nil {
+        return nil, domain.ErrInvalidCredentials
+    }
+
+    return user, nil
+}
