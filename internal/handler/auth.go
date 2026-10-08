@@ -12,6 +12,7 @@ import (
 
 type UserService interface {
 	Register(ctx context.Context, username string, password string) (*domain.User, error)
+	Login(ctx context.Context, username string, password string) (*domain.User, error)
 }
 
 type Handler struct {
@@ -32,6 +33,16 @@ type RegisterRequest struct {
 type RegisterResponse struct {
 	ID       uuid.UUID `json:"id"`
 	Username string    `json:"username"`
+}
+
+type LoginRequest struct {
+    Username string `json:"username"`
+    Password string `json:"password"`
+}
+
+type LoginResponse struct {
+    ID       uuid.UUID `json:"id"`
+    Username string    `json:"username"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +73,43 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	_ = json.NewEncoder(w).Encode(RegisterResponse{
+		ID:       user.ID,
+		Username: user.Username,
+	})
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req LoginRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Username == "" || req.Password == "" {
+		http.Error(w, "username and password are required", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.userService.Login(
+		r.Context(),
+		req.Username,
+		req.Password,
+	)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCredentials) {
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+
+		http.Error(w, "failed to login", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	_ = json.NewEncoder(w).Encode(LoginResponse{
 		ID:       user.ID,
 		Username: user.Username,
 	})

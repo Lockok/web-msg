@@ -17,6 +17,7 @@ func New(userService service.UserService) http.Handler {
 
 	authHandler := handler.NewHandler(&userService)
 	router.Post("/register", authHandler.Register)
+	router.Post("/login", authHandler.Login)
 
 	return router
 }
