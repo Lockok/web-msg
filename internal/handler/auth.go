@@ -3,17 +3,18 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/Lockok/web-msg/internal/domain"
 	"github.com/google/uuid"
 )
 
-type UserService interface{
+type UserService interface {
 	Register(ctx context.Context, username string, password string) (*domain.User, error)
 }
 
-type Handler struct{
+type Handler struct {
 	userService UserService
 }
 
@@ -29,8 +30,8 @@ type RegisterRequest struct {
 }
 
 type RegisterResponse struct {
-	ID uuid.UUID	`json:"id"`
-	Username string `json:"username"`
+	ID       uuid.UUID `json:"id"`
+	Username string    `json:"username"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -48,15 +49,20 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.userService.Register(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, domain.ErrUsernameExists) {
+			http.Error(w, "username already exists", http.StatusConflict)
+			return
+		}
+
 		http.Error(w, "failed to register user", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	
+
 	_ = json.NewEncoder(w).Encode(RegisterResponse{
-		ID: user.ID,
+		ID:       user.ID,
 		Username: user.Username,
 	})
 }

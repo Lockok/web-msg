@@ -34,8 +34,8 @@ func (s *UserService) Register(ctx context.Context, username string, password st
 	}
 
 	user := &domain.User{
-		ID: uuid.New(),
-		Username: username,
+		ID:           uuid.New(),
+		Username:     username,
 		PasswordHash: string(passwordHash),
 	}
 
@@ -46,4 +46,3 @@ func (s *UserService) Register(ctx context.Context, username string, password st
 
 	return createdUser, nil
 }
-

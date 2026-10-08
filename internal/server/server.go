@@ -14,7 +14,7 @@ func New(userService service.UserService) http.Handler {
 
 	healthHandler := health.NewHandler()
 	router.Get("/health", healthHandler.Check)
-	
+
 	authHandler := handler.NewHandler(&userService)
 	router.Post("/register", authHandler.Register)
 
