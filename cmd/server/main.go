@@ -8,7 +8,10 @@ import (
 	"github.com/Lockok/web-msg/internal/config"
 	"github.com/Lockok/web-msg/internal/logger"
 	"github.com/Lockok/web-msg/internal/postgres"
+	"github.com/Lockok/web-msg/internal/repository"
+	"github.com/Lockok/web-msg/internal/repository/db"
 	"github.com/Lockok/web-msg/internal/server"
+	"github.com/Lockok/web-msg/internal/service"
 )
 
 func main() {
@@ -18,16 +21,22 @@ func main() {
 
 	logger.Info("starting server")
 
-	db, err := postgres.ConnectDB(context.Background(), cfg.DatabaseURL)
+	pool, err := postgres.ConnectDB(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		logger.Error("Failed to connect to database", "error", err)
 		return
 	}
-	defer db.Close()
+	defer pool.Close()
 
 	logger.Info("database connected")
-	
-	router := server.New()
+
+	queries := db.New(pool)
+
+	userRepository := repository.NewUserRepository(queries)
+
+	userService := service.NewUserService(userRepository)
+
+	router := server.New(*userService)
 
 	log.Printf("Server is running on port: %s", cfg.Port)
 
