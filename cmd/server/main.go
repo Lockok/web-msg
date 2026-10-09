@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/Lockok/web-msg/internal/auth"
 	"github.com/Lockok/web-msg/internal/config"
 	"github.com/Lockok/web-msg/internal/logger"
 	"github.com/Lockok/web-msg/internal/postgres"
@@ -36,7 +37,8 @@ func main() {
 
 	userService := service.NewUserService(userRepository)
 
-	router := server.New(*userService)
+	jwtManager := auth.NewJWTManager(cfg.JWTSecret)
+	router := server.New(*userService, jwtManager, logger)
 
 	log.Printf("Server is running on port: %s", cfg.Port)
 
@@ -44,5 +46,3 @@ func main() {
 		log.Fatalf("Failed to start server: %v", err)
 	}
 }
-
-

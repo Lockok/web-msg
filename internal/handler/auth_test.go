@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Lockok/web-msg/internal/auth"
 	"github.com/Lockok/web-msg/internal/domain"
 	"github.com/google/uuid"
 )
@@ -45,19 +46,20 @@ func (m *mockUserService) Login(
 	}, nil
 }
 
-// Register Tests //////////////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////// REGISTER TESTS ////////////////////////////////////////////////////////
 func TestHandler_Register(t *testing.T) {
 	service := &mockUserService{}
-	handler := NewHandler(service)
-	
+	jwtManager := auth.NewJWTManager("test-secret") // Assuming you have a mock or real JWTManager implementation
+	handler := NewHandler(service, jwtManager)
+
 	body := `{"username":"alex","password":"12345678"}`
-	
+
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
 		strings.NewReader(body),
 	)
-	
+
 	rec := httptest.NewRecorder()
 
 	handler.Register(rec, req)
@@ -71,21 +73,22 @@ func TestHandler_RegisterUsernameExists(t *testing.T) {
 	service := &mockUserService{
 		err: domain.ErrUsernameExists,
 	}
-	
-	handler := NewHandler(service)
+
+	jwtManager := auth.NewJWTManager("test-secret")
+	handler := NewHandler(service, jwtManager)
 
 	body := `{"username":"alex","password":"12345678"}`
-	
+
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
 		strings.NewReader(body),
 	)
-	
+
 	rec := httptest.NewRecorder()
-	
+
 	handler.Register(rec, req)
-	
+
 	if rec.Code != http.StatusConflict {
 		t.Fatalf(
 			"expected status %d, got %d",
@@ -97,10 +100,11 @@ func TestHandler_RegisterUsernameExists(t *testing.T) {
 
 func TestHandler_RegisterInvalidJSON(t *testing.T) {
 	service := &mockUserService{}
-	handler := NewHandler(service)
-	
+	jwtManager := auth.NewJWTManager("test-secret")
+	handler := NewHandler(service, jwtManager)
+
 	body := `{"username":"alex","password":`
-	
+
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
@@ -122,20 +126,21 @@ func TestHandler_RegisterInvalidJSON(t *testing.T) {
 
 func TestHandler_RegisterEmptyFields(t *testing.T) {
 	service := &mockUserService{}
-	handler := NewHandler(service)
+	jwtManager := auth.NewJWTManager("test-secret")
+	handler := NewHandler(service, jwtManager)
 
 	body := `{"username":"","password":""}`
-	
+
 	req := httptest.NewRequest(
 		http.MethodPost,
 		"/register",
 		strings.NewReader(body),
 	)
-	
+
 	rec := httptest.NewRecorder()
-	
+
 	handler.Register(rec, req)
-	
+
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf(
 			"expected status %d, got %d",
@@ -149,7 +154,8 @@ func TestHandler_RegisterEmptyFields(t *testing.T) {
 
 func TestHandler_Login(t *testing.T) {
 	service := &mockUserService{}
-	handler := NewHandler(service)
+	jwtManager := auth.NewJWTManager("test-secret")
+	handler := NewHandler(service, jwtManager)
 
 	body := `{"username":"alex","password":"12345678"}`
 
@@ -177,7 +183,8 @@ func TestHandler_LoginInvalidCredentials(t *testing.T) {
 		err: domain.ErrInvalidCredentials,
 	}
 
-	handler := NewHandler(service)
+	jwtManager := auth.NewJWTManager("test-secret")
+	handler := NewHandler(service, jwtManager)
 
 	body := `{"username":"alex","password":"wrong-password"}`
 

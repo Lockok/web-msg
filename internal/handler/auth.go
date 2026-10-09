@@ -6,7 +6,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/Lockok/web-msg/internal/auth"
 	"github.com/Lockok/web-msg/internal/domain"
+	"github.com/Lockok/web-msg/internal/middleware"
 	"github.com/google/uuid"
 )
 
@@ -17,11 +19,13 @@ type UserService interface {
 
 type Handler struct {
 	userService UserService
+	jwtManager  *auth.JWTManager
 }
 
-func NewHandler(userService UserService) *Handler {
+func NewHandler(userService UserService, jwtManager *auth.JWTManager) *Handler {
 	return &Handler{
 		userService: userService,
+		jwtManager:  jwtManager,
 	}
 }
 
@@ -36,13 +40,14 @@ type RegisterResponse struct {
 }
 
 type LoginRequest struct {
-    Username string `json:"username"`
-    Password string `json:"password"`
+	Username string `json:"username"`
+	Password string `json:"password"`
 }
 
 type LoginResponse struct {
-    ID       uuid.UUID `json:"id"`
-    Username string    `json:"username"`
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
 }
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
@@ -106,11 +111,33 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	token, err := h.jwtManager.Generate(user.ID)
+	if err != nil {
+		http.Error(w, "failed to create access token", http.StatusInternalServerError)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 
 	_ = json.NewEncoder(w).Encode(LoginResponse{
-		ID:       user.ID,
-		Username: user.Username,
+		AccessToken: token,
+		TokenType:   "Bearer",
+		ExpiresIn:   900,
+	})
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	userID, ok := middleware.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"user_id": userID.String(),
 	})
 }
