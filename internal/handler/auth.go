@@ -65,6 +65,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.userService.Register(r.Context(), req.Username, req.Password)
 	if err != nil {
+		if errors.Is(err, domain.ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+
 		if errors.Is(err, domain.ErrUsernameExists) {
 			http.Error(w, "username already exists", http.StatusConflict)
 			return
