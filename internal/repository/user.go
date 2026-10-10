@@ -6,6 +6,7 @@ import (
 
 	"github.com/Lockok/web-msg/internal/domain"
 	"github.com/Lockok/web-msg/internal/repository/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
@@ -46,6 +47,10 @@ func (r *UserRepository) CreateUser(ctx context.Context, user *domain.User) (*do
 func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*domain.User, error) {
 	user, err := r.queries.GetUserByUsername(ctx, username)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrUserNotFound
+		}
+
 		return nil, err
 	}
 

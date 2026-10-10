@@ -206,3 +206,24 @@ func TestHandler_LoginInvalidCredentials(t *testing.T) {
 		)
 	}
 }
+
+func TestHandler_RegisterInvalidInput(t *testing.T) {
+	service := &mockUserService{
+		err: domain.ErrInvalidInput,
+	}
+
+	handler := NewHandler(service, auth.NewJWTManager("test-secret"))
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/register",
+		strings.NewReader(`{"username":"ab","password":"12345678"}`),
+	)
+	rec := httptest.NewRecorder()
+
+	handler.Register(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
