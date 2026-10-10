@@ -19,15 +19,17 @@ func NewJWTManager(secret string) *JWTManager {
 }
 
 type Claims struct {
-	UserID string `json:"user_id"`
 	jwt.RegisteredClaims
 }
 
 func (m *JWTManager) Generate(userID uuid.UUID) (string, error) {
+	if userID == uuid.Nil {
+		return "", errors.New("user ID must not be empty")
+	}
+
 	now := time.Now()
 
 	claims := Claims{
-		UserID: userID.String(),
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -43,13 +45,15 @@ func (m *JWTManager) Generate(userID uuid.UUID) (string, error) {
 func (m *JWTManager) Validate(tokenString string) (uuid.UUID, error) {
 	claims := &Claims{}
 
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		if token.Method != jwt.SigningMethodHS256 {
-			return nil, errors.New("unexpected signing method")
-		}
-
-		return m.secret, nil
-	})
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(token *jwt.Token) (any, error) {
+			return m.secret, nil
+		},
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+	)
 
 	if err != nil {
 		return uuid.Nil, err
@@ -59,9 +63,13 @@ func (m *JWTManager) Validate(tokenString string) (uuid.UUID, error) {
 		return uuid.Nil, errors.New("invalid token")
 	}
 
-	userID, err := uuid.Parse(claims.UserID)
+	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, errors.New("invalid token subject")
+	}
+
+	if userID == uuid.Nil {
+		return uuid.Nil, errors.New("token subject must not be empty")
 	}
 
 	return userID, nil
