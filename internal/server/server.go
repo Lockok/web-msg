@@ -1,23 +1,30 @@
 package server
 
 import (
+	"log/slog"
 	"net/http"
 
+	"github.com/Lockok/web-msg/internal/auth"
 	"github.com/Lockok/web-msg/internal/handler"
 	"github.com/Lockok/web-msg/internal/health"
+	"github.com/Lockok/web-msg/internal/middleware"
 	"github.com/Lockok/web-msg/internal/service"
 	"github.com/go-chi/chi"
 )
 
-func New(userService service.UserService) http.Handler {
+func New(userService service.UserService, jwtManager *auth.JWTManager, log *slog.Logger) http.Handler {
 	router := chi.NewRouter()
+
+	router.Use(middleware.RequestID)
+	router.Use(middleware.Recovery(log))
 
 	healthHandler := health.NewHandler()
 	router.Get("/health", healthHandler.Check)
 
-	authHandler := handler.NewHandler(&userService)
+	authHandler := handler.NewHandler(&userService, jwtManager)
 	router.Post("/register", authHandler.Register)
 	router.Post("/login", authHandler.Login)
+	router.With(middleware.Auth(jwtManager)).Get("/me", authHandler.Me)
 
 	return router
 }
