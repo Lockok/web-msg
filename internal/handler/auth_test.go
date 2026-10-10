@@ -13,7 +13,9 @@ import (
 )
 
 type mockUserService struct {
-	err error
+	err           error
+	registerCalls int
+	loginCalls    int
 }
 
 func (m *mockUserService) Register(
@@ -21,6 +23,8 @@ func (m *mockUserService) Register(
 	username string,
 	password string,
 ) (*domain.User, error) {
+	m.registerCalls++
+
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -36,6 +40,8 @@ func (m *mockUserService) Login(
 	username string,
 	password string,
 ) (*domain.User, error) {
+	m.loginCalls++
+
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -225,5 +231,137 @@ func TestHandler_RegisterInvalidInput(t *testing.T) {
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+}
+
+func TestHandler_AuthRejectsInvalidJSON(t *testing.T) {
+	const validBody = `{"username":"alex","password":"12345678"}`
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+	}{
+		{
+			name:       "empty body",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "malformed JSON",
+			body:       `{"username":`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "unknown field",
+			body:       `{"username":"alex","password":"12345678","admin":true}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "second JSON value",
+			body:       validBody + ` {}`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "trailing garbage",
+			body:       validBody + ` garbage`,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name: "oversized JSON",
+			body: `{"username":"` +
+				strings.Repeat("a", int(maxJSONBodyBytes)) +
+				`","password":"12345678"}`,
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+		{
+			name: "oversized trailing whitespace",
+			body: validBody +
+				strings.Repeat(" ", int(maxJSONBodyBytes)),
+			wantStatus: http.StatusRequestEntityTooLarge,
+		},
+	}
+
+	for _, path := range []string{"/register", "/login"} {
+		t.Run(path, func(t *testing.T) {
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					service := &mockUserService{}
+					handler := NewHandler(
+						service,
+						auth.NewJWTManager("test-secret"),
+					)
+
+					req := httptest.NewRequest(
+						http.MethodPost,
+						path,
+						strings.NewReader(tt.body),
+					)
+					rec := httptest.NewRecorder()
+
+					if path == "/register" {
+						handler.Register(rec, req)
+					} else {
+						handler.Login(rec, req)
+					}
+
+					if rec.Code != tt.wantStatus {
+						t.Fatalf(
+							"expected status %d, got %d: %s",
+							tt.wantStatus,
+							rec.Code,
+							rec.Body.String(),
+						)
+					}
+
+					if service.registerCalls != 0 || service.loginCalls != 0 {
+						t.Fatal("service must not be called for invalid JSON")
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestHandler_AuthAllowsTrailingWhitespace(t *testing.T) {
+	const body = "{\"username\":\"alex\",\"password\":\"12345678\"}\n\t "
+
+	for _, path := range []string{"/register", "/login"} {
+		t.Run(path, func(t *testing.T) {
+			service := &mockUserService{}
+			handler := NewHandler(
+				service,
+				auth.NewJWTManager("test-secret"),
+			)
+
+			req := httptest.NewRequest(
+				http.MethodPost,
+				path,
+				strings.NewReader(body),
+			)
+			rec := httptest.NewRecorder()
+
+			wantStatus := http.StatusOK
+
+			if path == "/register" {
+				handler.Register(rec, req)
+				wantStatus = http.StatusCreated
+			} else {
+				handler.Login(rec, req)
+			}
+
+			if rec.Code != wantStatus {
+				t.Fatalf(
+					"expected status %d, got %d: %s",
+					wantStatus,
+					rec.Code,
+					rec.Body.String(),
+				)
+			}
+
+			if service.registerCalls+service.loginCalls != 1 {
+				t.Fatal("expected exactly one service call")
+			}
+		})
 	}
 }
