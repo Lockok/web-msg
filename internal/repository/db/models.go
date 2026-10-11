@@ -32,6 +32,12 @@ type Message struct {
 	DeliveredAt pgtype.Timestamptz
 }
 
+type PrivateChatPair struct {
+	ChatID     uuid.UUID
+	UserLowID  uuid.UUID
+	UserHighID uuid.UUID
+}
+
 type User struct {
 	ID           uuid.UUID
 	Username     string
