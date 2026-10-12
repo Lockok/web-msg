@@ -107,7 +107,7 @@ func (r *ChatRepository) createPrivateChat(ctx context.Context, lowID uuid.UUID,
 		UserHighID: highID,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create private chat pair: %w", err)
+		return nil, fmt.Errorf("create private chat pair: %w", mapPrivateChatPairError(err))
 	}
 
 	err = queries.AddPrivateChatMembers(ctx, db.AddPrivateChatMembersParams{
@@ -141,4 +141,18 @@ func chatToDomain(chat db.Chat) *domain.Chat {
 		Name:      chat.Name.String,
 		CreatedAt: chat.CreatedAt.Time,
 	}
+}
+
+func mapPrivateChatPairError(err error) error {
+	var pgErr *pgconn.PgError
+
+	if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+		switch pgErr.ConstraintName {
+		case "private_chat_pairs_user_low_id_fkey",
+			"private_chat_pairs_user_high_id_fkey":
+			return domain.ErrUserNotFound
+		}
+	}
+
+	return err
 }
