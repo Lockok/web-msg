@@ -37,11 +37,13 @@ func main() {
 	queries := db.New(pool)
 
 	userRepository := repository.NewUserRepository(queries)
-
 	userService := service.NewUserService(userRepository)
 
+	chatRepository := repository.NewChatRepository(pool)
+	chatService := service.NewChatService(chatRepository)
+
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret)
-	router := server.New(*userService, jwtManager, logger)
+	router := server.New(*userService, chatService, jwtManager, logger)
 
 	log.Printf("Server is running on port: %s", cfg.Port)
 
