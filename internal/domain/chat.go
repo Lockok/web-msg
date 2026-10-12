@@ -12,3 +12,8 @@ type Chat struct {
 	Name      string
 	CreatedAt time.Time
 }
+
+type ChatCursor struct {
+	CreatedAt time.Time
+	ID        uuid.UUID
+}
