@@ -28,6 +28,7 @@ func New(userService service.UserService, chatService *service.ChatService, jwtM
 
 	chatHandler := handler.NewChatHandler(chatService, log)
 	router.With(middleware.Auth(jwtManager)).Post("/chats/private", chatHandler.GetOrCreatePrivateChat)
+	router.With(middleware.Auth(jwtManager)).Get("/chats", chatHandler.ListUserChats)
 
 	return router
 }
