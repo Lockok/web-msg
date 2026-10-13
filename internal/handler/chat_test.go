@@ -20,23 +20,44 @@ import (
 )
 
 type mockChatService struct {
-	chat      *domain.Chat
-	err       error
-	calls     int
-	gotUserID uuid.UUID
-	gotPeerID uuid.UUID
+	chat          *domain.Chat
+	err           error
+	calls         int
+	gotUserID     uuid.UUID
+	gotPeerID     uuid.UUID
+	page          *domain.ChatPage
+	listErr       error
+	listCalls     int
+	gotListUserID uuid.UUID
+	gotLimit      int
+	gotCursor     *domain.ChatCursor
 }
 
 func (m *mockChatService) GetOrCreatePrivateChat(
 	ctx context.Context,
 	userID uuid.UUID,
 	peerID uuid.UUID,
+
 ) (*domain.Chat, error) {
 	m.calls++
 	m.gotUserID = userID
 	m.gotPeerID = peerID
 
 	return m.chat, m.err
+}
+
+func (m *mockChatService) ListUserChats(
+	ctx context.Context,
+	userID uuid.UUID,
+	limit int,
+	cursor *domain.ChatCursor,
+) (*domain.ChatPage, error) {
+	m.listCalls++
+	m.gotListUserID = userID
+	m.gotLimit = limit
+	m.gotCursor = cursor
+
+	return m.page, m.listErr
 }
 
 func TestChatHandler_GetOrCreatePrivateChat(t *testing.T) {

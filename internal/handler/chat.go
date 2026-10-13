@@ -15,6 +15,7 @@ import (
 
 type ChatService interface {
 	GetOrCreatePrivateChat(ctx context.Context, userID uuid.UUID, peerID uuid.UUID) (*domain.Chat, error)
+	ListUserChats(ctx context.Context, userID uuid.UUID, limit int, cursor *domain.ChatCursor) (*domain.ChatPage, error)
 }
 
 type ChatHandler struct {
