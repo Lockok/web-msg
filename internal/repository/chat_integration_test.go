@@ -4,11 +4,13 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"os"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/Lockok/web-msg/internal/domain"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -227,6 +229,10 @@ func TestChatRepository_GetOrCreatePrivateChatRollbackIntegration(t *testing.T) 
 
 	if err == nil {
 		t.Fatal("expected error for a nonexistent peer")
+	}
+
+	if !errors.Is(err, domain.ErrUserNotFound) {
+		t.Fatalf("expected ErrUserNotFound, got %v", err)
 	}
 
 	if chat != nil {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/Lockok/web-msg/internal/domain"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func TestOrderUserIDs(t *testing.T) {
@@ -69,6 +70,70 @@ func TestChatRepository_GetOrCreatePrivateChatInvalidIDs(t *testing.T) {
 
 			if chat != nil {
 				t.Fatal("expected no chat for invalid IDs")
+			}
+		})
+	}
+}
+
+func TestMapPrivateChatPairError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		wantMissing bool
+	}{
+		{
+			name: "missing low user",
+			err: &pgconn.PgError{
+				Code:           "23503",
+				ConstraintName: "private_chat_pairs_user_low_id_fkey",
+			},
+			wantMissing: true,
+		},
+		{
+			name: "missing high user",
+			err: &pgconn.PgError{
+				Code:           "23503",
+				ConstraintName: "private_chat_pairs_user_high_id_fkey",
+			},
+			wantMissing: true,
+		},
+		{
+			name: "missing chat is not a missing user",
+			err: &pgconn.PgError{
+				Code:           "23503",
+				ConstraintName: "private_chat_pairs_chat_id_fkey",
+			},
+		},
+		{
+			name: "unique conflict stays unchanged",
+			err: &pgconn.PgError{
+				Code:           "23505",
+				ConstraintName: "private_chat_pairs_users_unique",
+			},
+		},
+		{
+			name: "connection error stays unchanged",
+			err:  errors.New("database unavailable"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapPrivateChatPairError(tt.err)
+
+			if tt.wantMissing {
+				if !errors.Is(got, domain.ErrUserNotFound) {
+					t.Fatalf("expected ErrUserNotFound, got %v", got)
+				}
+				return
+			}
+
+			if !errors.Is(got, tt.err) {
+				t.Fatalf("expected original error, got %v", got)
+			}
+
+			if errors.Is(got, domain.ErrUserNotFound) {
+				t.Fatal("unrelated error must not become ErrUserNotFound")
 			}
 		})
 	}
