@@ -42,7 +42,7 @@ const createPrivateChat = `-- name: CreatePrivateChat :one
 
 INSERT INTO chats (id, type)
 VALUES ($1, 'private')
-RETURNING id, type, name, created_at
+RETURNING id, type, name, created_at, last_message_seq
 `
 
 func (q *Queries) CreatePrivateChat(ctx context.Context, id uuid.UUID) (Chat, error) {
@@ -53,6 +53,7 @@ func (q *Queries) CreatePrivateChat(ctx context.Context, id uuid.UUID) (Chat, er
 		&i.Type,
 		&i.Name,
 		&i.CreatedAt,
+		&i.LastMessageSeq,
 	)
 	return i, err
 }
@@ -84,7 +85,7 @@ func (q *Queries) CreatePrivateChatPair(ctx context.Context, arg CreatePrivateCh
 
 const getPrivateChatByPair = `-- name: GetPrivateChatByPair :one
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN private_chat_pairs AS p ON p.chat_id = c.id
 WHERE p.user_low_id = $1
@@ -105,6 +106,7 @@ func (q *Queries) GetPrivateChatByPair(ctx context.Context, arg GetPrivateChatBy
 		&i.Type,
 		&i.Name,
 		&i.CreatedAt,
+		&i.LastMessageSeq,
 	)
 	return i, err
 }

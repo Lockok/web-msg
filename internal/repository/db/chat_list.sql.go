@@ -14,7 +14,7 @@ import (
 
 const listUserChats = `-- name: ListUserChats :many
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN chat_members AS m ON m.chat_id = c.id
 WHERE m.user_id = $1
@@ -41,6 +41,7 @@ func (q *Queries) ListUserChats(ctx context.Context, arg ListUserChatsParams) ([
 			&i.Type,
 			&i.Name,
 			&i.CreatedAt,
+			&i.LastMessageSeq,
 		); err != nil {
 			return nil, err
 		}
@@ -54,7 +55,7 @@ func (q *Queries) ListUserChats(ctx context.Context, arg ListUserChatsParams) ([
 
 const listUserChatsBefore = `-- name: ListUserChatsBefore :many
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN chat_members AS m ON m.chat_id = c.id
 WHERE m.user_id = $1
@@ -92,6 +93,7 @@ func (q *Queries) ListUserChatsBefore(ctx context.Context, arg ListUserChatsBefo
 			&i.Type,
 			&i.Name,
 			&i.CreatedAt,
+			&i.LastMessageSeq,
 		); err != nil {
 			return nil, err
 		}
