@@ -7,6 +7,8 @@ import (
 	"github.com/google/uuid"
 )
 
+const MaxMessageTextBytes = 4096
+
 var ErrChatNotFound = errors.New("chat not found")
 var ErrNotChatMember = errors.New("user is not a chat member")
 var ErrMessageConflict = errors.New("message idempotency conflict")
