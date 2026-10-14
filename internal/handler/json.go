@@ -11,7 +11,16 @@ import (
 const maxJSONBodyBytes int64 = 4 * 1024
 
 func decodeJSON(w http.ResponseWriter, r *http.Request, dst any) error {
-	r.Body = http.MaxBytesReader(w, r.Body, maxJSONBodyBytes)
+	return decodeJSONWithLimit(w, r, dst, maxJSONBodyBytes)
+}
+
+func decodeJSONWithLimit(
+	w http.ResponseWriter,
+	r *http.Request,
+	dst any,
+	maxBytes int64,
+) error {
+	r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
