@@ -18,6 +18,7 @@ const maxMessageBodyBytes int64 = 32 * 1024
 
 type MessageService interface {
 	Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error)
+	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, limit int, beforeSeq *int64) (*domain.MessagePage, error)
 }
 
 type MessageHandler struct {
