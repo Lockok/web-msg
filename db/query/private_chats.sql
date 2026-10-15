@@ -1,6 +1,6 @@
 -- name: GetPrivateChatByPair :one
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN private_chat_pairs AS p ON p.chat_id = c.id
 WHERE p.user_low_id = sqlc.arg(user_low_id)
@@ -12,7 +12,7 @@ WHERE p.user_low_id = sqlc.arg(user_low_id)
 
 INSERT INTO chats (id, type)
 VALUES (sqlc.arg(id), 'private')
-RETURNING id, type, name, created_at;
+RETURNING id, type, name, created_at, last_message_seq;
 
 
 -- name: CreatePrivateChatPair :exec

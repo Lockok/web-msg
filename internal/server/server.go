@@ -12,7 +12,7 @@ import (
 	"github.com/go-chi/chi"
 )
 
-func New(userService service.UserService, chatService *service.ChatService, jwtManager *auth.JWTManager, log *slog.Logger) http.Handler {
+func New(userService service.UserService, chatService *service.ChatService, messageService *service.MessageService, jwtManager *auth.JWTManager, log *slog.Logger) http.Handler {
 	router := chi.NewRouter()
 
 	router.Use(middleware.RequestID)
@@ -29,6 +29,10 @@ func New(userService service.UserService, chatService *service.ChatService, jwtM
 	chatHandler := handler.NewChatHandler(chatService, log)
 	router.With(middleware.Auth(jwtManager)).Post("/chats/private", chatHandler.GetOrCreatePrivateChat)
 	router.With(middleware.Auth(jwtManager)).Get("/chats", chatHandler.ListUserChats)
+
+	messageHandler := handler.NewMessageHandler(messageService, log)
+	router.With(middleware.Auth(jwtManager)).Post("/chats/{chat_id}/messages", messageHandler.Send)
+	router.With(middleware.Auth(jwtManager)).Get("/chats/{chat_id}/messages", messageHandler.ListChatMessages)
 
 	return router
 }

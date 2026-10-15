@@ -42,8 +42,11 @@ func main() {
 	chatRepository := repository.NewChatRepository(pool)
 	chatService := service.NewChatService(chatRepository)
 
+	messageRepository := repository.NewMessageRepository(pool)
+	messageService := service.NewMessageService(messageRepository)
+
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret)
-	router := server.New(*userService, chatService, jwtManager, logger)
+	router := server.New(*userService, chatService, messageService, jwtManager, logger)
 
 	log.Printf("Server is running on port: %s", cfg.Port)
 

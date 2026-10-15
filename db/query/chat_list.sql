@@ -1,6 +1,6 @@
 -- name: ListUserChats :many
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN chat_members AS m ON m.chat_id = c.id
 WHERE m.user_id = sqlc.arg(user_id)
@@ -10,7 +10,7 @@ LIMIT sqlc.arg(page_size)::integer;
 
 -- name: ListUserChatsBefore :many
 
-SELECT c.id, c.type, c.name, c.created_at
+SELECT c.id, c.type, c.name, c.created_at, c.last_message_seq
 FROM chats AS c
 JOIN chat_members AS m ON m.chat_id = c.id
 WHERE m.user_id = sqlc.arg(user_id)

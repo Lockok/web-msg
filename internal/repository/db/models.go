@@ -10,10 +10,11 @@ import (
 )
 
 type Chat struct {
-	ID        uuid.UUID
-	Type      string
-	Name      pgtype.Text
-	CreatedAt pgtype.Timestamptz
+	ID             uuid.UUID
+	Type           string
+	Name           pgtype.Text
+	CreatedAt      pgtype.Timestamptz
+	LastMessageSeq int64
 }
 
 type ChatMember struct {
@@ -24,12 +25,14 @@ type ChatMember struct {
 }
 
 type Message struct {
-	ID          uuid.UUID
-	ChatID      uuid.UUID
-	SenderID    uuid.UUID
-	Text        string
-	CreatedAt   pgtype.Timestamptz
-	DeliveredAt pgtype.Timestamptz
+	ID              uuid.UUID
+	ChatID          uuid.UUID
+	SenderID        uuid.UUID
+	Text            string
+	CreatedAt       pgtype.Timestamptz
+	DeliveredAt     pgtype.Timestamptz
+	Seq             int64
+	ClientMessageID uuid.UUID
 }
 
 type PrivateChatPair struct {

@@ -19,8 +19,9 @@ func TestChatRoutesWithoutAuthorization(t *testing.T) {
 	// должны завершаться до обращения к бизнес-логике.
 	userService := service.NewUserService(nil)
 	chatService := service.NewChatService(nil)
+	messageService := service.NewMessageService(nil)
 
-	router := New(*userService, chatService, jwtManager, log)
+	router := New(*userService, chatService, messageService, jwtManager, log)
 
 	tests := []struct {
 		name   string
@@ -36,6 +37,17 @@ func TestChatRoutesWithoutAuthorization(t *testing.T) {
 			name:   "private chat creation",
 			method: http.MethodPost,
 			path:   "/chats/private",
+		},
+		{
+			name:   "message sending",
+			method: http.MethodPost,
+			path:   "/chats/00000000-0000-0000-0000-000000000010/messages",
+		},
+
+		{
+			name:   "message history",
+			method: http.MethodGet,
+			path:   "/chats/00000000-0000-0000-0000-000000000010/messages",
 		},
 	}
 
