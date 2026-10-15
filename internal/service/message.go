@@ -12,6 +12,7 @@ import (
 
 type MessageRepository interface {
 	Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error)
+	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, pageSize int32, beforeSeq *int64) ([]domain.Message, error)
 }
 
 type MessageService struct {
@@ -69,4 +70,61 @@ func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput
 	}
 
 	return message, nil
+}
+
+func (s *MessageService) ListChatMessages(
+	ctx context.Context,
+	chatID uuid.UUID,
+	userID uuid.UUID,
+	limit int,
+	beforeSeq *int64,
+) (*domain.MessagePage, error) {
+	if chatID == uuid.Nil || userID == uuid.Nil {
+		return nil, fmt.Errorf(
+			"%w: chat and user IDs must not be empty",
+			domain.ErrInvalidInput,
+		)
+	}
+
+	if limit < 1 || limit > 100 {
+		return nil, fmt.Errorf(
+			"%w: limit must be between 1 and 100",
+			domain.ErrInvalidInput,
+		)
+	}
+
+	if beforeSeq != nil && *beforeSeq <= 0 {
+		return nil, fmt.Errorf(
+			"%w: before_seq must be positive",
+			domain.ErrInvalidInput,
+		)
+	}
+
+	messages, err := s.messages.ListChatMessages(
+		ctx,
+		chatID,
+		userID,
+		int32(limit+1),
+		beforeSeq,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("list chat messages: %w", err)
+	}
+
+	if messages == nil {
+		messages = make([]domain.Message, 0)
+	}
+
+	page := &domain.MessagePage{
+		Items: messages,
+	}
+
+	if len(messages) > limit {
+		page.Items = messages[:limit]
+
+		lastSeq := page.Items[len(page.Items)-1].Seq
+		page.NextBeforeSeq = &lastSeq
+	}
+
+	return page, nil
 }

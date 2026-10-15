@@ -11,10 +11,17 @@ import (
 )
 
 type mockMessageRepository struct {
-	message  *domain.Message
-	err      error
-	calls    int
-	gotInput domain.SendMessageInput
+	message            *domain.Message
+	err                error
+	calls              int
+	gotInput           domain.SendMessageInput
+	history            []domain.Message
+	historyErr         error
+	historyCalls       int
+	gotHistoryChatID   uuid.UUID
+	gotReaderID        uuid.UUID
+	gotHistoryPageSize int32
+	gotBeforeSeq       *int64
 }
 
 func (m *mockMessageRepository) Send(
@@ -25,6 +32,22 @@ func (m *mockMessageRepository) Send(
 	m.gotInput = input
 
 	return m.message, m.err
+}
+
+func (m *mockMessageRepository) ListChatMessages(
+	ctx context.Context,
+	chatID uuid.UUID,
+	userID uuid.UUID,
+	pageSize int32,
+	beforeSeq *int64,
+) ([]domain.Message, error) {
+	m.historyCalls++
+	m.gotHistoryChatID = chatID
+	m.gotReaderID = userID
+	m.gotHistoryPageSize = pageSize
+	m.gotBeforeSeq = beforeSeq
+
+	return m.history, m.historyErr
 }
 
 func validSendMessageInput() domain.SendMessageInput {

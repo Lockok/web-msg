@@ -29,3 +29,8 @@ type SendMessageInput struct {
 	ClientMessageID uuid.UUID
 	Text            string
 }
+
+type MessagePage struct {
+	Items         []Message
+	NextBeforeSeq *int64
+}
