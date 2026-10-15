@@ -32,6 +32,7 @@ func New(userService service.UserService, chatService *service.ChatService, mess
 
 	messageHandler := handler.NewMessageHandler(messageService, log)
 	router.With(middleware.Auth(jwtManager)).Post("/chats/{chat_id}/messages", messageHandler.Send)
+	router.With(middleware.Auth(jwtManager)).Get("/chats/{chat_id}/messages", messageHandler.ListChatMessages)
 
 	return router
 }
