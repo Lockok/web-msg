@@ -43,6 +43,11 @@ func (m *JWTManager) Generate(userID uuid.UUID) (string, error) {
 }
 
 func (m *JWTManager) Validate(tokenString string) (uuid.UUID, error) {
+	userID, _, err := m.ValidateWithExpiry(tokenString)
+	return userID, err
+}
+
+func (m *JWTManager) ValidateWithExpiry(tokenString string) (uuid.UUID, time.Time, error) {
 	claims := &Claims{}
 
 	token, err := jwt.ParseWithClaims(
@@ -56,21 +61,27 @@ func (m *JWTManager) Validate(tokenString string) (uuid.UUID, error) {
 	)
 
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, time.Time{}, err
 	}
 
 	if !token.Valid {
-		return uuid.Nil, errors.New("invalid token")
+		return uuid.Nil, time.Time{}, errors.New("invalid token")
 	}
 
 	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, errors.New("invalid token subject")
+		return uuid.Nil, time.Time{}, errors.New("invalid token subject")
 	}
 
 	if userID == uuid.Nil {
-		return uuid.Nil, errors.New("token subject must not be empty")
+		return uuid.Nil, time.Time{}, errors.New("token subject must not be empty")
 	}
 
-	return userID, nil
+	if claims.ExpiresAt == nil {
+		return uuid.Nil, time.Time{}, errors.New(
+			"token expiration must be present",
+		)
+	}
+
+	return userID, claims.ExpiresAt.Time, nil
 }

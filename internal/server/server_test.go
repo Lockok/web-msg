@@ -1,11 +1,18 @@
 package server
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
+
+	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
+	"github.com/google/uuid"
 
 	"github.com/Lockok/web-msg/internal/auth"
 	"github.com/Lockok/web-msg/internal/service"
@@ -68,5 +75,68 @@ func TestChatRoutesWithoutAuthorization(t *testing.T) {
 				)
 			}
 		})
+	}
+}
+
+func TestWebSocketRoute(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	jwtManager := auth.NewJWTManager("websocket-route-test-secret")
+
+	userService := service.NewUserService(nil)
+	chatService := service.NewChatService(nil)
+	messageService := service.NewMessageService(nil)
+
+	router := New(
+		*userService,
+		chatService,
+		messageService,
+		jwtManager,
+		logger,
+	)
+
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	token, err := jwtManager.Generate(uuid.New())
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	conn, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatalf("connect through /ws route: %v", err)
+	}
+	defer conn.CloseNow()
+
+	err = wsjson.Write(ctx, conn, map[string]string{
+		"type":         "auth",
+		"access_token": token,
+	})
+	if err != nil {
+		t.Fatalf("send auth: %v", err)
+	}
+
+	var response struct {
+		Type string `json:"type"`
+	}
+
+	if err := wsjson.Read(ctx, conn, &response); err != nil {
+		t.Fatalf("read auth response: %v", err)
+	}
+
+	if response.Type != "auth.ok" {
+		t.Fatalf("expected auth.ok, got %q", response.Type)
+	}
+
+	if err := conn.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close connection: %v", err)
 	}
 }
