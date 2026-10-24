@@ -8,6 +8,7 @@ import (
 	"github.com/Lockok/web-msg/internal/handler"
 	"github.com/Lockok/web-msg/internal/health"
 	"github.com/Lockok/web-msg/internal/middleware"
+	"github.com/Lockok/web-msg/internal/realtime"
 	"github.com/Lockok/web-msg/internal/service"
 	"github.com/go-chi/chi"
 )
@@ -34,7 +35,9 @@ func New(userService service.UserService, chatService *service.ChatService, mess
 	router.With(middleware.Auth(jwtManager)).Post("/chats/{chat_id}/messages", messageHandler.Send)
 	router.With(middleware.Auth(jwtManager)).Get("/chats/{chat_id}/messages", messageHandler.ListChatMessages)
 
-	webSocketHandler := handler.NewWebSocketHandler(jwtManager)
+	hub := realtime.NewHub()
+
+	webSocketHandler := handler.NewWebSocketHandler(jwtManager, hub)
 	router.Get("/ws", webSocketHandler.Connect)
 
 	return router

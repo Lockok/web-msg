@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Lockok/web-msg/internal/auth"
+	"github.com/Lockok/web-msg/internal/realtime"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 )
@@ -18,11 +19,13 @@ const (
 
 type WebSocketHandler struct {
 	jwtManager *auth.JWTManager
+	hub        *realtime.Hub
 }
 
-func NewWebSocketHandler(jwtManager *auth.JWTManager) *WebSocketHandler {
+func NewWebSocketHandler(jwtManager *auth.JWTManager, hub *realtime.Hub) *WebSocketHandler {
 	return &WebSocketHandler{
 		jwtManager: jwtManager,
+		hub:        hub,
 	}
 }
 
@@ -60,11 +63,17 @@ func (h *WebSocketHandler) Connect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, expiresAt, err := h.jwtManager.ValidateWithExpiry(request.AccessToken)
+	userID, expiresAt, err := h.jwtManager.ValidateWithExpiry(request.AccessToken)
 	if err != nil {
 		_ = conn.Close(websocket.StatusPolicyViolation, "invalid access token")
 		return
 	}
+
+	if err := h.hub.Register(userID, conn); err != nil {
+		_ = conn.Close(websocket.StatusInternalError, "failed to register connection")
+		return
+	}
+	defer h.hub.Unregister(userID, conn)
 
 	writeCtx, cancelWrite := context.WithTimeout(r.Context(), wsWriteTimeout)
 

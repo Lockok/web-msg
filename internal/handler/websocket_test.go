@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Lockok/web-msg/internal/auth"
+	"github.com/Lockok/web-msg/internal/realtime"
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
 	"github.com/golang-jwt/jwt/v5"
@@ -21,7 +22,8 @@ func newWebSocketTestServer(
 	t.Helper()
 
 	jwtManager := auth.NewJWTManager("websocket-test-secret")
-	handler := NewWebSocketHandler(jwtManager)
+	hub := realtime.NewHub()
+	handler := NewWebSocketHandler(jwtManager, hub)
 
 	server := httptest.NewServer(
 		http.HandlerFunc(handler.Connect),
@@ -252,5 +254,94 @@ func TestWebSocketHandler_CloseWhenTokenExpires(t *testing.T) {
 			status,
 			err,
 		)
+	}
+}
+
+func TestWebSocketHandler_RegistersAndRemovesConnection(t *testing.T) {
+	jwtManager := auth.NewJWTManager("websocket-lifecycle-test-secret")
+	hub := realtime.NewHub()
+
+	handler := NewWebSocketHandler(jwtManager, hub)
+
+	server := httptest.NewServer(
+		http.HandlerFunc(handler.Connect),
+	)
+	t.Cleanup(server.Close)
+
+	userID := uuid.New()
+
+	token, err := jwtManager.Generate(userID)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	conn, _, err := websocket.Dial(ctx, url, nil)
+	if err != nil {
+		t.Fatalf("connect: %v", err)
+	}
+	defer conn.CloseNow()
+
+	if got := len(hub.Connections(userID)); got != 0 {
+		t.Fatalf(
+			"expected no connections before authentication, got %d",
+			got,
+		)
+	}
+
+	err = wsjson.Write(ctx, conn, wsAuthRequest{
+		Type:        "auth",
+		AccessToken: token,
+	})
+	if err != nil {
+		t.Fatalf("send auth: %v", err)
+	}
+
+	var response wsAuthResponse
+	if err := wsjson.Read(ctx, conn, &response); err != nil {
+		t.Fatalf("read auth response: %v", err)
+	}
+
+	if response.Type != "auth.ok" {
+		t.Fatalf("expected auth.ok, got %q", response.Type)
+	}
+
+	if got := len(hub.Connections(userID)); got != 1 {
+		t.Fatalf(
+			"expected one authenticated connection, got %d",
+			got,
+		)
+	}
+
+	if err := conn.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close connection: %v", err)
+	}
+
+	cleanupCtx, cancelCleanup := context.WithTimeout(
+		ctx,
+		2*time.Second,
+	)
+	defer cancelCleanup()
+
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		if len(hub.Connections(userID)) == 0 {
+			break
+		}
+
+		select {
+		case <-ticker.C:
+		case <-cleanupCtx.Done():
+			t.Fatal("disconnected client remained in Hub")
+		}
 	}
 }
