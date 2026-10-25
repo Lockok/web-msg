@@ -25,7 +25,7 @@ func NewMessageRepository(pool *pgxpool.Pool) *MessageRepository {
 	}
 }
 
-func (r *MessageRepository) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+func (r *MessageRepository) SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error) {
 	if input.ChatID == uuid.Nil ||
 		input.SenderID == uuid.Nil ||
 		input.ClientMessageID == uuid.Nil {
@@ -91,7 +91,10 @@ func (r *MessageRepository) Send(ctx context.Context, input domain.SendMessageIn
 			return nil, fmt.Errorf("commit repeated message transaction: %w", err)
 		}
 
-		return messageToDomain(existing), nil
+		return &domain.SendMessageResult{
+			Message: messageToDomain(existing),
+			Created: false,
+		}, nil
 	}
 
 	if !errors.Is(err, pgx.ErrNoRows) {
@@ -122,8 +125,20 @@ func (r *MessageRepository) Send(ctx context.Context, input domain.SendMessageIn
 		return nil, fmt.Errorf("commit send message transaction: %w", err)
 	}
 
-	return messageToDomain(message), nil
+	return &domain.SendMessageResult{
+		Message: messageToDomain(message),
+		Created: true,
+	}, nil
 
+}
+
+func (r *MessageRepository) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+	result, err := r.SendWithResult(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Message, nil
 }
 
 func messageToDomain(message db.Message) *domain.Message {

@@ -11,7 +11,7 @@ import (
 )
 
 type MessageRepository interface {
-	Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error)
+	SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error)
 	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, pageSize int32, beforeSeq *int64) ([]domain.Message, error)
 }
 
@@ -25,7 +25,7 @@ func NewMessageService(messages MessageRepository) *MessageService {
 	}
 }
 
-func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+func (s *MessageService) SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error) {
 	if input.ChatID == uuid.Nil ||
 		input.SenderID == uuid.Nil ||
 		input.ClientMessageID == uuid.Nil {
@@ -64,12 +64,21 @@ func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput
 		)
 	}
 
-	message, err := s.messages.Send(ctx, input)
+	result, err := s.messages.SendWithResult(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
 	}
 
-	return message, nil
+	return result, nil
+}
+
+func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+	result, err := s.SendWithResult(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Message, nil
 }
 
 func (s *MessageService) ListChatMessages(

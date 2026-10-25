@@ -22,16 +22,24 @@ type mockMessageRepository struct {
 	gotReaderID        uuid.UUID
 	gotHistoryPageSize int32
 	gotBeforeSeq       *int64
+	created            bool
 }
 
-func (m *mockMessageRepository) Send(
+func (m *mockMessageRepository) SendWithResult(
 	ctx context.Context,
 	input domain.SendMessageInput,
-) (*domain.Message, error) {
+) (*domain.SendMessageResult, error) {
 	m.calls++
 	m.gotInput = input
 
-	return m.message, m.err
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	return &domain.SendMessageResult{
+		Message: m.message,
+		Created: m.created,
+	}, nil
 }
 
 func (m *mockMessageRepository) ListChatMessages(
@@ -225,6 +233,68 @@ func TestMessageService_SendRepositoryError(t *testing.T) {
 
 			if repository.calls != 1 {
 				t.Fatalf("expected one repository call, got %d", repository.calls)
+			}
+		})
+	}
+}
+
+func TestMessageService_SendWithResult(t *testing.T) {
+	tests := []struct {
+		name    string
+		created bool
+	}{
+		{name: "new message", created: true},
+		{name: "repeated message", created: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validSendMessageInput()
+
+			message := &domain.Message{
+				ID:              uuid.New(),
+				ChatID:          input.ChatID,
+				SenderID:        input.SenderID,
+				ClientMessageID: input.ClientMessageID,
+				Text:            input.Text,
+				Seq:             1,
+			}
+
+			repository := &mockMessageRepository{
+				message: message,
+				created: tt.created,
+			}
+			service := NewMessageService(repository)
+
+			result, err := service.SendWithResult(
+				context.Background(),
+				input,
+			)
+			if err != nil {
+				t.Fatalf("send message: %v", err)
+			}
+
+			if result == nil || result.Message != message {
+				t.Fatal("expected repository message")
+			}
+
+			if result.Created != tt.created {
+				t.Fatalf(
+					"expected Created=%v, got %v",
+					tt.created,
+					result.Created,
+				)
+			}
+
+			if repository.calls != 1 {
+				t.Fatalf(
+					"expected one repository call, got %d",
+					repository.calls,
+				)
+			}
+
+			if repository.gotInput != input {
+				t.Fatal("service changed the message input")
 			}
 		})
 	}
