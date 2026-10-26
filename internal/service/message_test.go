@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -23,6 +25,22 @@ type mockMessageRepository struct {
 	gotHistoryPageSize int32
 	gotBeforeSeq       *int64
 	created            bool
+}
+
+type mockMessageCreatedNotifier struct {
+	calls      int
+	gotMessage domain.Message
+	err        error
+}
+
+func (m *mockMessageCreatedNotifier) NotifyMessageCreated(
+	ctx context.Context,
+	message domain.Message,
+) error {
+	m.calls++
+	m.gotMessage = message
+
+	return m.err
 }
 
 func (m *mockMessageRepository) SendWithResult(
@@ -295,6 +313,140 @@ func TestMessageService_SendWithResult(t *testing.T) {
 
 			if repository.gotInput != input {
 				t.Fatal("service changed the message input")
+			}
+		})
+	}
+}
+
+func TestMessageService_SendNotifications(t *testing.T) {
+	repositoryErr := errors.New("database unavailable")
+	notificationErr := errors.New("connection write failed")
+
+	tests := []struct {
+		name              string
+		created           bool
+		repositoryErr     error
+		notificationErr   error
+		invalidText       bool
+		wantErr           error
+		wantRepoCalls     int
+		wantNotifications int
+	}{
+		{
+			name:              "new message",
+			created:           true,
+			wantRepoCalls:     1,
+			wantNotifications: 1,
+		},
+		{
+			name:          "repeated message",
+			created:       false,
+			wantRepoCalls: 1,
+		},
+		{
+			name:          "repository failure",
+			created:       true,
+			repositoryErr: repositoryErr,
+			wantErr:       repositoryErr,
+			wantRepoCalls: 1,
+		},
+		{
+			name:              "notification failure preserves success",
+			created:           true,
+			notificationErr:   notificationErr,
+			wantRepoCalls:     1,
+			wantNotifications: 1,
+		},
+		{
+			name:        "invalid message",
+			invalidText: true,
+			wantErr:     domain.ErrInvalidInput,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validSendMessageInput()
+			if tt.invalidText {
+				input.Text = ""
+			}
+
+			saved := &domain.Message{
+				ID:              uuid.New(),
+				ChatID:          input.ChatID,
+				SenderID:        input.SenderID,
+				ClientMessageID: input.ClientMessageID,
+				Text:            input.Text,
+				Seq:             1,
+			}
+
+			repository := &mockMessageRepository{
+				message: saved,
+				created: tt.created,
+				err:     tt.repositoryErr,
+			}
+
+			notifier := &mockMessageCreatedNotifier{
+				err: tt.notificationErr,
+			}
+
+			logger := slog.New(
+				slog.NewTextHandler(io.Discard, nil),
+			)
+
+			service := NewMessageServiceWithNotifer(
+				repository,
+				notifier,
+				logger,
+			)
+
+			message, err := service.Send(
+				context.Background(),
+				input,
+			)
+
+			if repository.calls != tt.wantRepoCalls {
+				t.Fatalf(
+					"expected %d repository calls, got %d",
+					tt.wantRepoCalls,
+					repository.calls,
+				)
+			}
+
+			if notifier.calls != tt.wantNotifications {
+				t.Fatalf(
+					"expected %d notifications, got %d",
+					tt.wantNotifications,
+					notifier.calls,
+				)
+			}
+
+			if notifier.calls > 0 && notifier.gotMessage != *saved {
+				t.Fatal("notifier received a different message")
+			}
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf(
+						"expected error %v, got %v",
+						tt.wantErr,
+						err,
+					)
+				}
+
+				if message != nil {
+					t.Fatal("expected no message on send failure")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected send error: %v", err)
+			}
+
+			if message != saved {
+				t.Fatal("expected saved message")
 			}
 		})
 	}

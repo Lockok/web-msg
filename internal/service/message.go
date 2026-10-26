@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -15,13 +16,33 @@ type MessageRepository interface {
 	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, pageSize int32, beforeSeq *int64) ([]domain.Message, error)
 }
 
+type MessageCreatedNotifer interface {
+	NotifyMessageCreated(ctx context.Context, message domain.Message) error
+}
+
 type MessageService struct {
 	messages MessageRepository
+	notifer  MessageCreatedNotifer
+	log      *slog.Logger
 }
 
 func NewMessageService(messages MessageRepository) *MessageService {
+	return NewMessageServiceWithNotifer(
+		messages,
+		nil,
+		slog.Default(),
+	)
+}
+
+func NewMessageServiceWithNotifer(messages MessageRepository, notifer MessageCreatedNotifer, logger *slog.Logger) *MessageService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &MessageService{
 		messages: messages,
+		notifer:  notifer,
+		log:      logger,
 	}
 }
 
@@ -67,6 +88,24 @@ func (s *MessageService) SendWithResult(ctx context.Context, input domain.SendMe
 	result, err := s.messages.SendWithResult(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
+	}
+
+	if result.Created && s.notifer != nil {
+		notifyCtx := context.WithoutCancel(ctx)
+
+		err := s.notifer.NotifyMessageCreated(
+			notifyCtx,
+			*result.Message,
+		)
+		if err != nil {
+			s.log.ErrorContext(
+				ctx,
+				"failed to notify about created message",
+				"message_id", result.Message.ID,
+				"chat_id", result.Message.ChatID,
+				"error", err,
+			)
+		}
 	}
 
 	return result, nil

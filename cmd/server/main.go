@@ -9,6 +9,7 @@ import (
 	"github.com/Lockok/web-msg/internal/config"
 	"github.com/Lockok/web-msg/internal/logger"
 	"github.com/Lockok/web-msg/internal/postgres"
+	"github.com/Lockok/web-msg/internal/realtime"
 	"github.com/Lockok/web-msg/internal/repository"
 	"github.com/Lockok/web-msg/internal/repository/db"
 	"github.com/Lockok/web-msg/internal/server"
@@ -43,10 +44,14 @@ func main() {
 	chatService := service.NewChatService(chatRepository)
 
 	messageRepository := repository.NewMessageRepository(pool)
-	messageService := service.NewMessageService(messageRepository)
+
+	hub := realtime.NewHub()
+	messageNotifer := realtime.NewMessageNotifier(chatRepository, hub)
+
+	messageService := service.NewMessageServiceWithNotifer(messageRepository, messageNotifer, logger)
 
 	jwtManager := auth.NewJWTManager(cfg.JWTSecret)
-	router := server.New(*userService, chatService, messageService, jwtManager, logger)
+	router := server.New(*userService, chatService, messageService, jwtManager, logger, hub)
 
 	log.Printf("Server is running on port: %s", cfg.Port)
 

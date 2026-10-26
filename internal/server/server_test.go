@@ -15,11 +15,12 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/Lockok/web-msg/internal/auth"
+	"github.com/Lockok/web-msg/internal/realtime"
 	"github.com/Lockok/web-msg/internal/service"
 )
 
 func TestChatRoutesWithoutAuthorization(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	jwtManager := auth.NewJWTManager("test-secret")
 
 	// Repository не нужны: запросы без авторизации
@@ -28,7 +29,7 @@ func TestChatRoutesWithoutAuthorization(t *testing.T) {
 	chatService := service.NewChatService(nil)
 	messageService := service.NewMessageService(nil)
 
-	router := New(*userService, chatService, messageService, jwtManager, log)
+	router := New(*userService, chatService, messageService, jwtManager, logger, realtime.NewHub())
 
 	tests := []struct {
 		name   string
@@ -92,6 +93,7 @@ func TestWebSocketRoute(t *testing.T) {
 		messageService,
 		jwtManager,
 		logger,
+		realtime.NewHub(),
 	)
 
 	server := httptest.NewServer(router)
