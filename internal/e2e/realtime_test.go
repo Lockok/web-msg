@@ -108,6 +108,7 @@ func TestMessageRealtime(t *testing.T) {
 
 	senderID, senderToken := createAccount()
 	receiverID, receiverToken := createAccount()
+	_, outsiderToken := createAccount()
 
 	var chat struct {
 		ID uuid.UUID `json:"id"`
@@ -126,30 +127,43 @@ func TestMessageRealtime(t *testing.T) {
 
 	wsURL := strings.Replace(baseURL, "http", "ws", 1) + "/ws"
 
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
-	if err != nil {
-		t.Fatalf("connect receiver WebSocket: %v", err)
-	}
-	defer conn.CloseNow()
+	connect := func(token string) *websocket.Conn {
+		t.Helper()
 
-	err = wsjson.Write(ctx, conn, map[string]string{
-		"type":         "auth",
-		"access_token": receiverToken,
-	})
-	if err != nil {
-		t.Fatalf("authenticate receiver: %v", err)
+		conn, _, err := websocket.Dial(ctx, wsURL, nil)
+		if err != nil {
+			t.Fatalf("connect WebSocket: %v", err)
+		}
+
+		t.Cleanup(func() {
+			_ = conn.CloseNow()
+		})
+
+		err = wsjson.Write(ctx, conn, map[string]string{
+			"type":         "auth",
+			"access_token": token,
+		})
+		if err != nil {
+			t.Fatalf("authenticate WebSocket: %v", err)
+		}
+
+		var response struct {
+			Type string `json:"type"`
+		}
+		if err := wsjson.Read(ctx, conn, &response); err != nil {
+			t.Fatalf("read authentication response: %v", err)
+		}
+
+		if response.Type != "auth.ok" {
+			t.Fatalf("expected auth.ok, got %q", response.Type)
+		}
+
+		return conn
 	}
 
-	var authResponse struct {
-		Type string `json:"type"`
-	}
-	if err := wsjson.Read(ctx, conn, &authResponse); err != nil {
-		t.Fatalf("read authentication response: %v", err)
-	}
-
-	if authResponse.Type != "auth.ok" {
-		t.Fatalf("expected auth.ok, got %q", authResponse.Type)
-	}
+	receiverTab1 := connect(receiverToken)
+	receiverTab2 := connect(receiverToken)
+	outsiderConn := connect(outsiderToken)
 
 	clientMessageID := uuid.New()
 	text := "  Привет 👋\nПроверяем realtime  "
@@ -173,18 +187,96 @@ func TestMessageRealtime(t *testing.T) {
 		t.Fatal("HTTP response contains no message ID")
 	}
 
-	var event realtime.MessageCreatedEvent
-	if err := wsjson.Read(ctx, conn, &event); err != nil {
-		t.Fatalf("receiver did not receive message event: %v", err)
+	expectEvent := func(
+		conn *websocket.Conn,
+		messageID uuid.UUID,
+		clientID uuid.UUID,
+		wantText string,
+		wantSeq int64,
+	) {
+		t.Helper()
+
+		var event realtime.MessageCreatedEvent
+		if err := wsjson.Read(ctx, conn, &event); err != nil {
+			t.Fatalf("read message event: %v", err)
+		}
+
+		if event.Type != "message.created" ||
+			event.Message.ID != messageID ||
+			event.Message.ChatID != chat.ID ||
+			event.Message.SenderID != senderID ||
+			event.Message.ClientMessageID != clientID ||
+			event.Message.Text != wantText ||
+			event.Message.Seq != wantSeq {
+			t.Fatalf("unexpected realtime event: %+v", event)
+		}
 	}
 
-	if event.Type != "message.created" ||
-		event.Message.ID != saved.ID ||
-		event.Message.ChatID != chat.ID ||
-		event.Message.SenderID != senderID ||
-		event.Message.ClientMessageID != clientMessageID ||
-		event.Message.Text != text ||
-		event.Message.Seq != 1 {
-		t.Fatalf("unexpected realtime event: %+v", event)
+	// Каждая вкладка должна получить первое сообщение.
+	expectEvent(receiverTab1, saved.ID, clientMessageID, text, 1)
+	expectEvent(receiverTab2, saved.ID, clientMessageID, text, 1)
+
+	// Повторяем тот же запрос с тем же ключом и текстом.
+	var repeated struct {
+		ID uuid.UUID `json:"id"`
+	}
+
+	post(
+		"/chats/"+chat.ID.String()+"/messages",
+		senderToken,
+		map[string]string{
+			"client_message_id": clientMessageID.String(),
+			"text":              text,
+		},
+		&repeated,
+		http.StatusOK,
+	)
+
+	if repeated.ID != saved.ID {
+		t.Fatal("repeated request returned a different message")
+	}
+
+	// Отправляем новое сообщение-маркер.
+	secondClientID := uuid.New()
+	secondText := "Второе сообщение"
+
+	var second struct {
+		ID uuid.UUID `json:"id"`
+	}
+
+	post(
+		"/chats/"+chat.ID.String()+"/messages",
+		senderToken,
+		map[string]string{
+			"client_message_id": secondClientID.String(),
+			"text":              secondText,
+		},
+		&second,
+		http.StatusOK,
+	)
+
+	if second.ID == uuid.Nil || second.ID == saved.ID {
+		t.Fatal("expected a new message ID")
+	}
+
+	// Следующим событием должно быть второе сообщение, не дубль первого.
+	// seq=2 также проверяет, что повтор не увеличил счётчик.
+	expectEvent(receiverTab1, second.ID, secondClientID, secondText, 2)
+	expectEvent(receiverTab2, second.ID, secondClientID, secondText, 2)
+
+	// Посторонний не должен получить ни одно из событий.
+	outsiderCtx, cancelOutsider := context.WithTimeout(
+		ctx,
+		300*time.Millisecond,
+	)
+	defer cancelOutsider()
+
+	_, _, err := outsiderConn.Read(outsiderCtx)
+	if err == nil {
+		t.Fatal("outsider received an unexpected message")
+	}
+
+	if outsiderCtx.Err() != context.DeadlineExceeded {
+		t.Fatalf("outsider connection failed unexpectedly: %v", err)
 	}
 }
