@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -11,27 +13,62 @@ import (
 )
 
 type mockMessageRepository struct {
-	message            *domain.Message
-	err                error
-	calls              int
-	gotInput           domain.SendMessageInput
-	history            []domain.Message
-	historyErr         error
-	historyCalls       int
+	message  *domain.Message
+	err      error
+	calls    int
+	gotInput domain.SendMessageInput
+
+	history      []domain.Message
+	historyErr   error
+	historyCalls int
+
 	gotHistoryChatID   uuid.UUID
 	gotReaderID        uuid.UUID
 	gotHistoryPageSize int32
 	gotBeforeSeq       *int64
+
+	created bool
+
+	syncMessages    []domain.Message
+	syncErr         error
+	syncCalls       int
+	gotSyncChatID   uuid.UUID
+	gotSyncUserID   uuid.UUID
+	gotSyncAfterSeq int64
+	gotSyncPageSize int32
 }
 
-func (m *mockMessageRepository) Send(
+type mockMessageCreatedNotifier struct {
+	calls      int
+	gotMessage domain.Message
+	err        error
+}
+
+func (m *mockMessageCreatedNotifier) NotifyMessageCreated(
+	ctx context.Context,
+	message domain.Message,
+) error {
+	m.calls++
+	m.gotMessage = message
+
+	return m.err
+}
+
+func (m *mockMessageRepository) SendWithResult(
 	ctx context.Context,
 	input domain.SendMessageInput,
-) (*domain.Message, error) {
+) (*domain.SendMessageResult, error) {
 	m.calls++
 	m.gotInput = input
 
-	return m.message, m.err
+	if m.err != nil {
+		return nil, m.err
+	}
+
+	return &domain.SendMessageResult{
+		Message: m.message,
+		Created: m.created,
+	}, nil
 }
 
 func (m *mockMessageRepository) ListChatMessages(
@@ -48,6 +85,22 @@ func (m *mockMessageRepository) ListChatMessages(
 	m.gotBeforeSeq = beforeSeq
 
 	return m.history, m.historyErr
+}
+
+func (m *mockMessageRepository) ListChatMessagesAfter(
+	ctx context.Context,
+	chatID uuid.UUID,
+	userID uuid.UUID,
+	afterSeq int64,
+	pageSize int32,
+) ([]domain.Message, error) {
+	m.syncCalls++
+	m.gotSyncChatID = chatID
+	m.gotSyncUserID = userID
+	m.gotSyncAfterSeq = afterSeq
+	m.gotSyncPageSize = pageSize
+
+	return m.syncMessages, m.syncErr
 }
 
 func validSendMessageInput() domain.SendMessageInput {
@@ -225,6 +278,202 @@ func TestMessageService_SendRepositoryError(t *testing.T) {
 
 			if repository.calls != 1 {
 				t.Fatalf("expected one repository call, got %d", repository.calls)
+			}
+		})
+	}
+}
+
+func TestMessageService_SendWithResult(t *testing.T) {
+	tests := []struct {
+		name    string
+		created bool
+	}{
+		{name: "new message", created: true},
+		{name: "repeated message", created: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validSendMessageInput()
+
+			message := &domain.Message{
+				ID:              uuid.New(),
+				ChatID:          input.ChatID,
+				SenderID:        input.SenderID,
+				ClientMessageID: input.ClientMessageID,
+				Text:            input.Text,
+				Seq:             1,
+			}
+
+			repository := &mockMessageRepository{
+				message: message,
+				created: tt.created,
+			}
+			service := NewMessageService(repository)
+
+			result, err := service.SendWithResult(
+				context.Background(),
+				input,
+			)
+			if err != nil {
+				t.Fatalf("send message: %v", err)
+			}
+
+			if result == nil || result.Message != message {
+				t.Fatal("expected repository message")
+			}
+
+			if result.Created != tt.created {
+				t.Fatalf(
+					"expected Created=%v, got %v",
+					tt.created,
+					result.Created,
+				)
+			}
+
+			if repository.calls != 1 {
+				t.Fatalf(
+					"expected one repository call, got %d",
+					repository.calls,
+				)
+			}
+
+			if repository.gotInput != input {
+				t.Fatal("service changed the message input")
+			}
+		})
+	}
+}
+
+func TestMessageService_SendNotifications(t *testing.T) {
+	repositoryErr := errors.New("database unavailable")
+	notificationErr := errors.New("connection write failed")
+
+	tests := []struct {
+		name              string
+		created           bool
+		repositoryErr     error
+		notificationErr   error
+		invalidText       bool
+		wantErr           error
+		wantRepoCalls     int
+		wantNotifications int
+	}{
+		{
+			name:              "new message",
+			created:           true,
+			wantRepoCalls:     1,
+			wantNotifications: 1,
+		},
+		{
+			name:          "repeated message",
+			created:       false,
+			wantRepoCalls: 1,
+		},
+		{
+			name:          "repository failure",
+			created:       true,
+			repositoryErr: repositoryErr,
+			wantErr:       repositoryErr,
+			wantRepoCalls: 1,
+		},
+		{
+			name:              "notification failure preserves success",
+			created:           true,
+			notificationErr:   notificationErr,
+			wantRepoCalls:     1,
+			wantNotifications: 1,
+		},
+		{
+			name:        "invalid message",
+			invalidText: true,
+			wantErr:     domain.ErrInvalidInput,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			input := validSendMessageInput()
+			if tt.invalidText {
+				input.Text = ""
+			}
+
+			saved := &domain.Message{
+				ID:              uuid.New(),
+				ChatID:          input.ChatID,
+				SenderID:        input.SenderID,
+				ClientMessageID: input.ClientMessageID,
+				Text:            input.Text,
+				Seq:             1,
+			}
+
+			repository := &mockMessageRepository{
+				message: saved,
+				created: tt.created,
+				err:     tt.repositoryErr,
+			}
+
+			notifier := &mockMessageCreatedNotifier{
+				err: tt.notificationErr,
+			}
+
+			logger := slog.New(
+				slog.NewTextHandler(io.Discard, nil),
+			)
+
+			service := NewMessageServiceWithNotifer(
+				repository,
+				notifier,
+				logger,
+			)
+
+			message, err := service.Send(
+				context.Background(),
+				input,
+			)
+
+			if repository.calls != tt.wantRepoCalls {
+				t.Fatalf(
+					"expected %d repository calls, got %d",
+					tt.wantRepoCalls,
+					repository.calls,
+				)
+			}
+
+			if notifier.calls != tt.wantNotifications {
+				t.Fatalf(
+					"expected %d notifications, got %d",
+					tt.wantNotifications,
+					notifier.calls,
+				)
+			}
+
+			if notifier.calls > 0 && notifier.gotMessage != *saved {
+				t.Fatal("notifier received a different message")
+			}
+
+			if tt.wantErr != nil {
+				if !errors.Is(err, tt.wantErr) {
+					t.Fatalf(
+						"expected error %v, got %v",
+						tt.wantErr,
+						err,
+					)
+				}
+
+				if message != nil {
+					t.Fatal("expected no message on send failure")
+				}
+
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected send error: %v", err)
+			}
+
+			if message != saved {
+				t.Fatal("expected saved message")
 			}
 		})
 	}

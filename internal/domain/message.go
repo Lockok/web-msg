@@ -34,3 +34,13 @@ type MessagePage struct {
 	Items         []Message
 	NextBeforeSeq *int64
 }
+
+type SendMessageResult struct {
+	Message *Message
+	Created bool
+}
+
+type MessageSyncPage struct {
+	Items        []Message
+	NextAfterSeq *int64
+}

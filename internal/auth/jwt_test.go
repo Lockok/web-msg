@@ -162,3 +162,39 @@ func TestJWTManager_GenerateNilUserID(t *testing.T) {
 		t.Fatal("must not generate a token for an empty user ID")
 	}
 }
+
+func TestJWTManager_ValidateWithExpiry(t *testing.T) {
+	manager := NewJWTManager("test-secret")
+	wantUserID := uuid.New()
+
+	before := time.Now()
+
+	token, err := manager.Generate(wantUserID)
+	if err != nil {
+		t.Fatalf("generate token: %v", err)
+	}
+
+	after := time.Now()
+
+	userID, expiresAt, err := manager.ValidateWithExpiry(token)
+	if err != nil {
+		t.Fatalf("validate token: %v", err)
+	}
+
+	if userID != wantUserID {
+		t.Fatalf("expected user %s, got %s", wantUserID, userID)
+	}
+
+	// JWT хранит время с точностью до секунды.
+	earliest := before.Add(15 * time.Minute).Truncate(time.Second)
+	latest := after.Add(15 * time.Minute).Truncate(time.Second)
+
+	if expiresAt.Before(earliest) || expiresAt.After(latest) {
+		t.Fatalf(
+			"expected expiration between %v and %v, got %v",
+			earliest,
+			latest,
+			expiresAt,
+		)
+	}
+}

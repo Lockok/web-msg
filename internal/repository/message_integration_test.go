@@ -432,3 +432,51 @@ func TestMessageRepository_SendInsertFailureRollbackIntegration(t *testing.T) {
 		t.Fatalf("expected state %+v, got %+v", want, state)
 	}
 }
+
+func TestMessageRepository_SendWithResultIntegration(t *testing.T) {
+	repository, _, chatID, senderID := newMessageTestFixture(t)
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	input := domain.SendMessageInput{
+		ChatID:          chatID,
+		SenderID:        senderID,
+		ClientMessageID: uuid.New(),
+		Text:            "Привет",
+	}
+
+	first, err := repository.SendWithResult(ctx, input)
+	if err != nil {
+		t.Fatalf("send new message: %v", err)
+	}
+
+	if first == nil || first.Message == nil {
+		t.Fatal("expected saved message")
+	}
+
+	if !first.Created {
+		t.Fatal("first send must report Created=true")
+	}
+
+	repeated, err := repository.SendWithResult(ctx, input)
+	if err != nil {
+		t.Fatalf("repeat send: %v", err)
+	}
+
+	if repeated == nil || repeated.Message == nil {
+		t.Fatal("expected existing message")
+	}
+
+	if repeated.Created {
+		t.Fatal("repeated send must report Created=false")
+	}
+
+	if repeated.Message.ID != first.Message.ID ||
+		repeated.Message.Seq != first.Message.Seq {
+		t.Fatal("repeated send must return the same message")
+	}
+}

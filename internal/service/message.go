@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strings"
 	"unicode/utf8"
 
@@ -11,21 +12,42 @@ import (
 )
 
 type MessageRepository interface {
-	Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error)
+	SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error)
 	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, pageSize int32, beforeSeq *int64) ([]domain.Message, error)
+	ListChatMessagesAfter(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, afterSeq int64, pageSize int32) ([]domain.Message, error)
+}
+
+type MessageCreatedNotifer interface {
+	NotifyMessageCreated(ctx context.Context, message domain.Message) error
 }
 
 type MessageService struct {
 	messages MessageRepository
+	notifer  MessageCreatedNotifer
+	log      *slog.Logger
 }
 
 func NewMessageService(messages MessageRepository) *MessageService {
+	return NewMessageServiceWithNotifer(
+		messages,
+		nil,
+		slog.Default(),
+	)
+}
+
+func NewMessageServiceWithNotifer(messages MessageRepository, notifer MessageCreatedNotifer, logger *slog.Logger) *MessageService {
+	if logger == nil {
+		logger = slog.Default()
+	}
+
 	return &MessageService{
 		messages: messages,
+		notifer:  notifer,
+		log:      logger,
 	}
 }
 
-func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+func (s *MessageService) SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error) {
 	if input.ChatID == uuid.Nil ||
 		input.SenderID == uuid.Nil ||
 		input.ClientMessageID == uuid.Nil {
@@ -64,12 +86,39 @@ func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput
 		)
 	}
 
-	message, err := s.messages.Send(ctx, input)
+	result, err := s.messages.SendWithResult(ctx, input)
 	if err != nil {
 		return nil, fmt.Errorf("send message: %w", err)
 	}
 
-	return message, nil
+	if result.Created && s.notifer != nil {
+		notifyCtx := context.WithoutCancel(ctx)
+
+		err := s.notifer.NotifyMessageCreated(
+			notifyCtx,
+			*result.Message,
+		)
+		if err != nil {
+			s.log.ErrorContext(
+				ctx,
+				"failed to notify about created message",
+				"message_id", result.Message.ID,
+				"chat_id", result.Message.ChatID,
+				"error", err,
+			)
+		}
+	}
+
+	return result, nil
+}
+
+func (s *MessageService) Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error) {
+	result, err := s.SendWithResult(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+
+	return result.Message, nil
 }
 
 func (s *MessageService) ListChatMessages(
