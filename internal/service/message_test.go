@@ -13,18 +13,29 @@ import (
 )
 
 type mockMessageRepository struct {
-	message            *domain.Message
-	err                error
-	calls              int
-	gotInput           domain.SendMessageInput
-	history            []domain.Message
-	historyErr         error
-	historyCalls       int
+	message  *domain.Message
+	err      error
+	calls    int
+	gotInput domain.SendMessageInput
+
+	history      []domain.Message
+	historyErr   error
+	historyCalls int
+
 	gotHistoryChatID   uuid.UUID
 	gotReaderID        uuid.UUID
 	gotHistoryPageSize int32
 	gotBeforeSeq       *int64
-	created            bool
+
+	created bool
+
+	syncMessages    []domain.Message
+	syncErr         error
+	syncCalls       int
+	gotSyncChatID   uuid.UUID
+	gotSyncUserID   uuid.UUID
+	gotSyncAfterSeq int64
+	gotSyncPageSize int32
 }
 
 type mockMessageCreatedNotifier struct {
@@ -74,6 +85,22 @@ func (m *mockMessageRepository) ListChatMessages(
 	m.gotBeforeSeq = beforeSeq
 
 	return m.history, m.historyErr
+}
+
+func (m *mockMessageRepository) ListChatMessagesAfter(
+	ctx context.Context,
+	chatID uuid.UUID,
+	userID uuid.UUID,
+	afterSeq int64,
+	pageSize int32,
+) ([]domain.Message, error) {
+	m.syncCalls++
+	m.gotSyncChatID = chatID
+	m.gotSyncUserID = userID
+	m.gotSyncAfterSeq = afterSeq
+	m.gotSyncPageSize = pageSize
+
+	return m.syncMessages, m.syncErr
 }
 
 func validSendMessageInput() domain.SendMessageInput {

@@ -33,6 +33,14 @@ type mockMessageService struct {
 	gotReaderID      uuid.UUID
 	gotHistoryLimit  int
 	gotBeforeSeq     *int64
+
+	syncPage        *domain.MessageSyncPage
+	syncErr         error
+	syncCalls       int
+	gotSyncChatID   uuid.UUID
+	gotSyncUserID   uuid.UUID
+	gotSyncAfterSeq int64
+	gotSyncLimit    int
 }
 
 func (m *mockMessageService) Send(
@@ -61,6 +69,22 @@ func (m *mockMessageService) ListChatMessages(
 	return m.historyPage, m.historyErr
 }
 
+func (m *mockMessageService) SyncChatMessages(
+	ctx context.Context,
+	chatID uuid.UUID,
+	userID uuid.UUID,
+	afterSeq int64,
+	limit int,
+) (*domain.MessageSyncPage, error) {
+	m.syncCalls++
+	m.gotSyncChatID = chatID
+	m.gotSyncUserID = userID
+	m.gotSyncAfterSeq = afterSeq
+	m.gotSyncLimit = limit
+
+	return m.syncPage, m.syncErr
+}
+
 func newMessageTestRouter(
 	t *testing.T,
 	service *mockMessageService,
@@ -87,6 +111,11 @@ func newMessageTestRouter(
 	router.With(middleware.Auth(jwtManager)).Get(
 		"/chats/{chat_id}/messages",
 		handler.ListChatMessages,
+	)
+
+	router.With(middleware.Auth(jwtManager)).Get(
+		"/chats/{chat_id}/messages/sync",
+		handler.SyncChatMessages,
 	)
 
 	return router, token

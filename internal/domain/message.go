@@ -39,3 +39,8 @@ type SendMessageResult struct {
 	Message *Message
 	Created bool
 }
+
+type MessageSyncPage struct {
+	Items        []Message
+	NextAfterSeq *int64
+}

@@ -57,6 +57,11 @@ func TestChatRoutesWithoutAuthorization(t *testing.T) {
 			method: http.MethodGet,
 			path:   "/chats/00000000-0000-0000-0000-000000000010/messages",
 		},
+		{
+			name:   "message sync",
+			method: http.MethodGet,
+			path:   "/chats/00000000-0000-0000-0000-000000000010/messages/sync?after_seq=0",
+		},
 	}
 
 	for _, tt := range tests {

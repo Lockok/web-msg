@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -279,4 +280,189 @@ func TestMessageRealtime(t *testing.T) {
 	if outsiderCtx.Err() != context.DeadlineExceeded {
 		t.Fatalf("outsider connection failed unexpectedly: %v", err)
 	}
+
+	// Получатель обработал сообщения 1–2 и отключился.
+	if err := receiverTab1.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close receiver tab 1: %v", err)
+	}
+
+	if err := receiverTab2.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close receiver tab 2: %v", err)
+	}
+
+	// Пока получатель офлайн, сохраняем ещё пять сообщений.
+	offlineMessages := make(map[int64]realtime.MessagePayload)
+
+	for seq := int64(3); seq <= 7; seq++ {
+		var savedOffline realtime.MessagePayload
+
+		post(
+			"/chats/"+chat.ID.String()+"/messages",
+			senderToken,
+			map[string]string{
+				"client_message_id": uuid.NewString(),
+				"text":              fmt.Sprintf("Пропущенное сообщение %d", seq),
+			},
+			&savedOffline,
+			http.StatusOK,
+		)
+
+		if savedOffline.ID == uuid.Nil || savedOffline.Seq != seq {
+			t.Fatalf("unexpected offline message: %+v", savedOffline)
+		}
+
+		offlineMessages[seq] = savedOffline
+	}
+
+	// Сначала восстанавливаем WebSocket, затем запрашиваем пропущенное.
+	reconnected := connect(receiverToken)
+
+	type syncResponse struct {
+		Items        []realtime.MessagePayload `json:"items"`
+		NextAfterSeq *int64                    `json:"next_after_seq"`
+	}
+
+	getSync := func(
+		token string,
+		afterSeq int64,
+		limit int,
+		wantStatus int,
+	) *syncResponse {
+		t.Helper()
+
+		path := fmt.Sprintf(
+			"/chats/%s/messages/sync?after_seq=%d&limit=%d",
+			chat.ID,
+			afterSeq,
+			limit,
+		)
+
+		req, err := http.NewRequestWithContext(
+			ctx,
+			http.MethodGet,
+			baseURL+path,
+			nil,
+		)
+		if err != nil {
+			t.Fatalf("create sync request: %v", err)
+		}
+
+		if token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+
+		response, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("GET sync: %v", err)
+		}
+		defer response.Body.Close()
+
+		if response.StatusCode != wantStatus {
+			t.Fatalf(
+				"GET sync: expected %d, got %d",
+				wantStatus,
+				response.StatusCode,
+			)
+		}
+
+		if wantStatus != http.StatusOK {
+			return nil
+		}
+
+		var page syncResponse
+		if err := json.NewDecoder(response.Body).Decode(&page); err != nil {
+			t.Fatalf("decode sync response: %v", err)
+		}
+
+		return &page
+	}
+
+	pages := []struct {
+		afterSeq int64
+		wantSeqs []int64
+		wantNext int64 // 0 означает null.
+	}{
+		{2, []int64{3, 4}, 4},
+		{4, []int64{5, 6}, 6},
+		{6, []int64{7}, 0},
+		{7, nil, 0},
+	}
+
+	for _, expectedPage := range pages {
+		page := getSync(
+			receiverToken,
+			expectedPage.afterSeq,
+			2,
+			http.StatusOK,
+		)
+
+		if page.Items == nil {
+			t.Fatal("sync items must be an array, not null")
+		}
+
+		if len(page.Items) != len(expectedPage.wantSeqs) {
+			t.Fatalf(
+				"after %d: expected %d messages, got %d",
+				expectedPage.afterSeq,
+				len(expectedPage.wantSeqs),
+				len(page.Items),
+			)
+		}
+
+		for i, seq := range expectedPage.wantSeqs {
+			got := page.Items[i]
+			want := offlineMessages[seq]
+
+			if got.ID != want.ID ||
+				got.ChatID != want.ChatID ||
+				got.SenderID != want.SenderID ||
+				got.ClientMessageID != want.ClientMessageID ||
+				got.Text != want.Text ||
+				got.Seq != want.Seq ||
+				!got.CreatedAt.Equal(want.CreatedAt) {
+				t.Fatalf("unexpected recovered message: %+v", got)
+			}
+		}
+
+		if expectedPage.wantNext == 0 {
+			if page.NextAfterSeq != nil {
+				t.Fatal("expected null sync cursor")
+			}
+		} else if page.NextAfterSeq == nil ||
+			*page.NextAfterSeq != expectedPage.wantNext {
+			t.Fatalf("expected sync cursor %d", expectedPage.wantNext)
+		}
+	}
+
+	// Знание chat_id не даёт постороннему права читать сообщения.
+	getSync(outsiderToken, 2, 2, http.StatusForbidden)
+	getSync("", 2, 2, http.StatusUnauthorized)
+
+	liveClientID := uuid.New()
+	liveText := "После восстановления"
+
+	var liveMessage realtime.MessagePayload
+
+	post(
+		"/chats/"+chat.ID.String()+"/messages",
+		senderToken,
+		map[string]string{
+			"client_message_id": liveClientID.String(),
+			"text":              liveText,
+		},
+		&liveMessage,
+		http.StatusOK,
+	)
+
+	if liveMessage.ID == uuid.Nil || liveMessage.Seq != 8 {
+		t.Fatalf("unexpected live message: %+v", liveMessage)
+	}
+
+	expectEvent(
+		reconnected,
+		liveMessage.ID,
+		liveClientID,
+		liveText,
+		8,
+	)
 }

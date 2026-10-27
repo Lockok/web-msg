@@ -14,6 +14,7 @@ import (
 type MessageRepository interface {
 	SendWithResult(ctx context.Context, input domain.SendMessageInput) (*domain.SendMessageResult, error)
 	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, pageSize int32, beforeSeq *int64) ([]domain.Message, error)
+	ListChatMessagesAfter(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, afterSeq int64, pageSize int32) ([]domain.Message, error)
 }
 
 type MessageCreatedNotifer interface {
