@@ -20,6 +20,7 @@ type MessageService interface {
 	Send(ctx context.Context, input domain.SendMessageInput) (*domain.Message, error)
 	ListChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, limit int, beforeSeq *int64) (*domain.MessagePage, error)
 	SyncChatMessages(ctx context.Context, chatID uuid.UUID, userID uuid.UUID, afterSeq int64, limit int) (*domain.MessageSyncPage, error)
+	SearchChatMessages(ctx context.Context, chatID, userID uuid.UUID, searchText string, limit int, beforeSeq *int64) (*domain.MessagePage, error)
 }
 
 type MessageHandler struct {

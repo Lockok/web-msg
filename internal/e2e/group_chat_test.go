@@ -275,4 +275,97 @@ func TestGroupChatE2E(t *testing.T) {
 	if readCtx.Err() != context.DeadlineExceeded {
 		t.Fatalf("member connection failed unexpectedly: %v", err)
 	}
+
+	// Подготовим два сообщения для поиска.
+	var searchMessage1, searchMessage2 struct {
+		ID  uuid.UUID `json:"id"`
+		Seq int64     `json:"seq"`
+	}
+
+	request(
+		http.MethodPost, messagesPath, adminToken,
+		map[string]string{
+			"client_message_id": uuid.NewString(),
+			"text":              "hello %_ one",
+		},
+		http.StatusOK, &searchMessage1,
+	)
+	request(
+		http.MethodPost, messagesPath, adminToken,
+		map[string]string{
+			"client_message_id": uuid.NewString(),
+			"text":              "HELLO second",
+		},
+		http.StatusOK, &searchMessage2,
+	)
+
+	if searchMessage1.ID == uuid.Nil || searchMessage1.Seq != 3 ||
+		searchMessage2.ID == uuid.Nil || searchMessage2.Seq != 4 {
+		t.Fatalf("unexpected search messages: %+v %+v", searchMessage1, searchMessage2)
+	}
+
+	searchPath := fmt.Sprintf("/chats/%s/messages/search", group.ID)
+
+	type searchPage struct {
+		Items []struct {
+			ID  uuid.UUID `json:"id"`
+			Seq int64     `json:"seq"`
+		} `json:"items"`
+		NextBeforeSeq *int64 `json:"next_before_seq"`
+	}
+
+	// Первая страница: регистр не важен, сначала более новое сообщение.
+	var firstSearchPage searchPage
+	request(
+		http.MethodGet, searchPath+"?q=hello&limit=1", adminToken,
+		nil, http.StatusOK, &firstSearchPage,
+	)
+	if len(firstSearchPage.Items) != 1 ||
+		firstSearchPage.Items[0].ID != searchMessage2.ID ||
+		firstSearchPage.NextBeforeSeq == nil ||
+		*firstSearchPage.NextBeforeSeq != searchMessage2.Seq {
+		t.Fatalf("unexpected first search page: %+v", firstSearchPage)
+	}
+
+	// Продолжение начинается строго до курсора.
+	var secondSearchPage searchPage
+	request(
+		http.MethodGet,
+		fmt.Sprintf("%s?q=hello&limit=1&before_seq=%d",
+			searchPath, *firstSearchPage.NextBeforeSeq),
+		adminToken, nil, http.StatusOK, &secondSearchPage,
+	)
+	if len(secondSearchPage.Items) != 1 ||
+		secondSearchPage.Items[0].ID != searchMessage1.ID ||
+		secondSearchPage.NextBeforeSeq != nil {
+		t.Fatalf("unexpected second search page: %+v", secondSearchPage)
+	}
+
+	// %25 — URL-кодирование символа %. Поиск должен найти именно "%_".
+	var literalSearchPage searchPage
+	request(
+		http.MethodGet, searchPath+"?q=%25_", adminToken,
+		nil, http.StatusOK, &literalSearchPage,
+	)
+	if len(literalSearchPage.Items) != 1 ||
+		literalSearchPage.Items[0].ID != searchMessage1.ID {
+		t.Fatalf("unexpected literal search page: %+v", literalSearchPage)
+	}
+
+	// Пустой результат — массив [], а не null.
+	var emptySearchPage searchPage
+	request(
+		http.MethodGet, searchPath+"?q=no-such-fragment", adminToken,
+		nil, http.StatusOK, &emptySearchPage,
+	)
+	if emptySearchPage.Items == nil || len(emptySearchPage.Items) != 0 {
+		t.Fatalf("expected empty search array: %+v", emptySearchPage)
+	}
+
+	// Доступ и валидация на настоящем маршруте.
+	request(http.MethodGet, searchPath+"?q=hello", "", nil, http.StatusUnauthorized, nil)
+	request(http.MethodGet, searchPath+"?q=hello", outsiderToken, nil, http.StatusForbidden, nil)
+	request(http.MethodGet, searchPath+"?q=hello", memberToken, nil, http.StatusForbidden, nil)
+	request(http.MethodGet, searchPath+"?q=", adminToken, nil, http.StatusBadRequest, nil)
+	request(http.MethodGet, searchPath+"?q=a&q=b", adminToken, nil, http.StatusBadRequest, nil)
 }
