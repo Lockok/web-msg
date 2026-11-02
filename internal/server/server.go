@@ -30,6 +30,9 @@ func New(userService service.UserService, chatService *service.ChatService, mess
 	chatHandler := handler.NewChatHandler(chatService, log)
 	router.With(middleware.Auth(jwtManager)).Post("/chats/private", chatHandler.GetOrCreatePrivateChat)
 	router.With(middleware.Auth(jwtManager)).Get("/chats", chatHandler.ListUserChats)
+	router.With(middleware.Auth(jwtManager)).Post("/chats/group", chatHandler.CreateGroupChat)
+	router.With(middleware.Auth(jwtManager)).Put("/chats/{chat_id}/members/{user_id}", chatHandler.AddGroupMember)
+	router.With(middleware.Auth(jwtManager)).Delete("/chats/{chat_id}/members/{user_id}", chatHandler.RemoveGroupMember)
 
 	messageHandler := handler.NewMessageHandler(messageService, log)
 	router.With(middleware.Auth(jwtManager)).Post("/chats/{chat_id}/messages", messageHandler.Send)
