@@ -1,0 +1,314 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #17233c;
+  background: #f3f5fa;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: radial-gradient(circle at top left, #e2eaff, transparent 45%),
+    #f3f5fa;
+}
+
+.card {
+  width: min(100%, 440px);
+  padding: 40px;
+  background: #fff;
+  border: 1px solid #e7ebf3;
+  border-radius: 20px;
+  box-shadow: 0 18px 60px rgb(38 55 92 / 10%);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 38px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+}
+
+.brand-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  color: #fff;
+  background: #4d63df;
+}
+
+.eyebrow {
+  color: #6073d4;
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+}
+
+h1 {
+  margin: 10px 0;
+  font-size: clamp(26px, 6vw, 32px);
+  letter-spacing: -0.04em;
+}
+
+.description {
+  margin: 0 0 28px;
+  color: #66738b;
+  line-height: 1.5;
+}
+
+form {
+  display: grid;
+  gap: 10px;
+}
+
+label {
+  margin-top: 8px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #d9e0ec;
+  border-radius: 9px;
+  outline: none;
+}
+
+input:focus-visible,
+button:focus-visible {
+  outline: 3px solid #b8c5ff;
+  outline-offset: 2px;
+}
+
+.primary,
+.secondary {
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 9px;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.primary {
+  margin-top: 14px;
+  color: #fff;
+  background: #4d63df;
+}
+
+.secondary {
+  color: #3449b2;
+  background: #edf0ff;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.switch {
+  margin: 24px 0 0;
+  color: #66738b;
+  font-size: 14px;
+}
+
+.switch button {
+  padding: 0;
+  border: 0;
+  color: #4058ce;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.message {
+  margin: 4px 0 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.error {
+  color: #b4233a;
+}
+
+.notice {
+  color: #16734c;
+}
+
+@media (max-width: 480px) {
+  .card {
+    padding: 28px;
+  }
+}
+
+.workspace-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.workspace-heading .description {
+  margin-bottom: 20px;
+}
+
+.group-form {
+  padding-bottom: 24px;
+  border-bottom: 1px solid #e7ebf3;
+}
+
+.chat-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.chat-list-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.muted,
+.workspace-note {
+  color: #77839a;
+  font-size: 13px;
+}
+
+.chat-list {
+  display: grid;
+  gap: 10px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e7ebf3;
+  border-radius: 10px;
+}
+
+.chat-avatar {
+  display: grid;
+  flex: 0 0 38px;
+  height: 38px;
+  place-items: center;
+  border-radius: 10px;
+  color: #4058ce;
+  background: #edf0ff;
+  font-weight: 700;
+}
+
+.chat-meta {
+  display: block;
+  margin-top: 3px;
+  color: #77839a;
+  font-size: 12px;
+}
+
+.load-more {
+  width: 100%;
+}
+
+.workspace-note {
+  margin: 24px 0 0;
+}
+
+button.chat-row {
+  width: 100%;
+  color: inherit;
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+}
+
+button.chat-row:hover {
+  border-color: #a8b6ef;
+  background: #f8f9ff;
+}
+
+.back-button {
+  padding: 0;
+  border: 0;
+  color: #4058ce;
+  background: transparent;
+  cursor: pointer;
+  font-weight: 650;
+}
+
+.room-heading {
+  margin-bottom: 24px;
+}
+
+.room-heading .muted {
+  margin: 0;
+}
+
+.message-list {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.message-item {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f2f4fb;
+}
+
+.message-author {
+  color: #687592;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.message-item p {
+  margin: 6px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.message-form {
+  padding-top: 20px;
+  border-top: 1px solid #e7ebf3;
+}
+
+.message-form textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 12px 14px;
+  border: 1px solid #d9e0ec;
+  border-radius: 9px;
+  font: inherit;
+}
+
+.message-form textarea:focus-visible {
+  outline: 3px solid #b8c5ff;
+  outline-offset: 2px;
+}
