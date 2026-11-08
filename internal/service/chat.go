@@ -13,6 +13,7 @@ type ChatRepository interface {
 	ListUserChats(ctx context.Context, userID uuid.UUID, pageSize int32, cursor *domain.ChatCursor) ([]domain.Chat, error)
 	CreateGroupChat(ctx context.Context, input domain.CreateGroupChatInput) (*domain.Chat, error)
 	SetGroupMember(ctx context.Context, chatID, actorID, targetID uuid.UUID, add bool) error
+	ClearChatHistory(ctx context.Context, chatID, userID uuid.UUID) (int64, error)
 }
 
 type ChatService struct {

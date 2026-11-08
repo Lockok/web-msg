@@ -18,6 +18,7 @@ type ChatService interface {
 	ListUserChats(ctx context.Context, userID uuid.UUID, limit int, cursor *domain.ChatCursor) (*domain.ChatPage, error)
 	CreateGroupChat(ctx context.Context, input domain.CreateGroupChatInput) (*domain.Chat, error)
 	SetGroupMember(ctx context.Context, chatID, actorID, targetID uuid.UUID, add bool) error
+	ClearChatHistory(ctx context.Context, chatID, userID uuid.UUID) (int64, error)
 }
 
 type ChatHandler struct {

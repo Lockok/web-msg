@@ -368,4 +368,87 @@ func TestGroupChatE2E(t *testing.T) {
 	request(http.MethodGet, searchPath+"?q=hello", memberToken, nil, http.StatusForbidden, nil)
 	request(http.MethodGet, searchPath+"?q=", adminToken, nil, http.StatusBadRequest, nil)
 	request(http.MethodGet, searchPath+"?q=a&q=b", adminToken, nil, http.StatusBadRequest, nil)
+
+	// Вернём ранее удалённого участника в группу.
+	request(http.MethodPut, memberPath, adminToken, nil, http.StatusNoContent, nil)
+
+	clearPath := fmt.Sprintf("/chats/%s/history/clear", group.ID)
+
+	// Без токена и без участия в чате очистка запрещена.
+	request(http.MethodPost, clearPath, "", nil, http.StatusUnauthorized, nil)
+	request(http.MethodPost, clearPath, outsiderToken, nil, http.StatusForbidden, nil)
+
+	var clearance struct {
+		ClearedThroughSeq int64 `json:"cleared_through_seq"`
+	}
+	request(http.MethodPost, clearPath, memberToken, nil, http.StatusOK, &clearance)
+
+	if clearance.ClearedThroughSeq != searchMessage2.Seq {
+		t.Fatalf("unexpected clearance: %+v", clearance)
+	}
+
+	// У участника очищенная история не видна ни в истории, ни в поиске, ни в sync.
+	var memberHistory searchPage
+	request(http.MethodGet, messagesPath+"?limit=20", memberToken, nil, http.StatusOK, &memberHistory)
+	if len(memberHistory.Items) != 0 {
+		t.Fatalf("cleared history is still visible: %+v", memberHistory)
+	}
+
+	var memberSearch searchPage
+	request(http.MethodGet, searchPath+"?q=hello", memberToken, nil, http.StatusOK, &memberSearch)
+	if len(memberSearch.Items) != 0 {
+		t.Fatalf("cleared messages are still searchable: %+v", memberSearch)
+	}
+
+	var memberSync struct {
+		Items []struct {
+			ID  uuid.UUID `json:"id"`
+			Seq int64     `json:"seq"`
+		} `json:"items"`
+	}
+	request(http.MethodGet, syncPath, memberToken, nil, http.StatusOK, &memberSync)
+	if len(memberSync.Items) != 0 {
+		t.Fatalf("cleared messages are still in sync: %+v", memberSync)
+	}
+
+	// Администратор по-прежнему видит старые сообщения.
+	var adminSearch searchPage
+	request(http.MethodGet, searchPath+"?q=hello", adminToken, nil, http.StatusOK, &adminSearch)
+	if len(adminSearch.Items) != 2 {
+		t.Fatalf("other participant lost search results: %+v", adminSearch)
+	}
+
+	var adminSync struct {
+		Items []struct {
+			ID  uuid.UUID `json:"id"`
+			Seq int64     `json:"seq"`
+		} `json:"items"`
+	}
+	request(http.MethodGet, syncPath, adminToken, nil, http.StatusOK, &adminSync)
+	if len(adminSync.Items) != int(searchMessage2.Seq) {
+		t.Fatalf("other participant lost history: %+v", adminSync)
+	}
+
+	// Новое сообщение после очистки видно обоим.
+	var afterClear struct {
+		ID  uuid.UUID `json:"id"`
+		Seq int64     `json:"seq"`
+	}
+	request(
+		http.MethodPost, messagesPath, adminToken,
+		map[string]string{
+			"client_message_id": uuid.NewString(),
+			"text":              "Сообщение после очистки",
+		},
+		http.StatusOK, &afterClear,
+	)
+	if afterClear.ID == uuid.Nil || afterClear.Seq != clearance.ClearedThroughSeq+1 {
+		t.Fatalf("unexpected new message: %+v", afterClear)
+	}
+
+	var memberAfterClear searchPage
+	request(http.MethodGet, messagesPath+"?limit=20", memberToken, nil, http.StatusOK, &memberAfterClear)
+	if len(memberAfterClear.Items) != 1 || memberAfterClear.Items[0].ID != afterClear.ID {
+		t.Fatalf("unexpected history after clearance: %+v", memberAfterClear)
+	}
 }

@@ -17,6 +17,12 @@ type Chat struct {
 	LastMessageSeq int64
 }
 
+type ChatHistoryClearance struct {
+	ChatID            uuid.UUID
+	UserID            uuid.UUID
+	ClearedThroughSeq int64
+}
+
 type ChatMember struct {
 	ChatID   uuid.UUID
 	UserID   uuid.UUID

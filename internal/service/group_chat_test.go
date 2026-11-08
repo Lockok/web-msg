@@ -35,6 +35,13 @@ func (m *groupChatRepositoryStub) CreateGroupChat(
 	return m.chat, m.err
 }
 
+func (m *mockChatRepository) ClearChatHistory(
+	ctx context.Context,
+	chatID, userID uuid.UUID,
+) (int64, error) {
+	return 0, errors.New("unexpected ClearChatHistory call")
+}
+
 func (m *mockChatRepository) SetGroupMember(
 	ctx context.Context,
 	chatID, actorID, targetID uuid.UUID,

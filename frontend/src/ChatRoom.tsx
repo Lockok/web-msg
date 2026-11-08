@@ -89,6 +89,7 @@ export default function ChatRoom({ chat, accessToken, onBack }: Props) {
   const [loadingOlder, setLoadingOlder] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState('')
+  const [clearing, setClearing] = useState(false)
   const [connection, setConnection] = useState<
   'connecting' | 'syncing' | 'connected' | 'disconnected' | 'stopped'
 >('connecting')
@@ -98,6 +99,9 @@ const [reconnectKey, setReconnectKey] = useState(0)
   const sendingRef = useRef(false)
   const pendingRef = useRef<{ text: string; clientID: string } | null>(null)
   const syncedSeqRef = useRef(0)
+  const clearingRef = useRef(false)
+  const hiddenThroughRef = useRef(0)
+  const historyGenerationRef = useRef(0)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -146,8 +150,10 @@ useEffect(() => {
     stopRetry: () => void,
   ) {
     while (active && !controller.signal.aborted) {
+      const afterSeq = syncedSeqRef.current
+
       const params = new URLSearchParams({
-        after_seq: String(syncedSeqRef.current),
+        after_seq: String(afterSeq),
         limit: '100',
       })
 
@@ -182,7 +188,7 @@ useEffect(() => {
       }
 
       const rows = data.items as Message[]
-      let lastSeq = syncedSeqRef.current
+      let lastSeq = afterSeq
 
       for (const message of rows) {
         if (
@@ -206,8 +212,12 @@ useEffect(() => {
 
       if (!active || controller.signal.aborted) return
 
-      setMessages((current) => mergeMessages(current, rows))
-      syncedSeqRef.current = lastSeq
+      setMessages((current) =>
+  mergeMessages(current, rows).filter(
+    (message) => message.seq > hiddenThroughRef.current,
+  ),
+)
+syncedSeqRef.current = Math.max(syncedSeqRef.current, lastSeq)
 
       if (data.next_after_seq === null) return
     }
@@ -297,12 +307,14 @@ useEffect(() => {
       }
 
       // События можно показывать сразу, но sync-курсор по ним не двигаем.
-      setMessages((current) => mergeMessages(current, [{
-        id: message.id as string,
-        sender_id: message.sender_id as string,
-        text: message.text as string,
-        seq: message.seq as number,
-      }]))
+      setMessages((current) =>
+  mergeMessages(current, [{
+    id: message.id as string,
+    sender_id: message.sender_id as string,
+    text: message.text as string,
+    seq: message.seq as number,
+  }]).filter((item) => item.seq > hiddenThroughRef.current),
+)
     }
 
     socket.onerror = () => {
@@ -352,13 +364,21 @@ useEffect(() => {
   async function loadOlder() {
     if (nextBeforeSeq === null || loadingOlder) return
 
+    const generation = historyGenerationRef.current
+
     setLoadingOlder(true)
     setError('')
 
     try {
       const page = await fetchHistory(chat.id, accessToken, nextBeforeSeq)
-      setMessages((current) => mergeMessages(current, page.items))
-      setNextBeforeSeq(page.next_before_seq)
+      if (generation !== historyGenerationRef.current) return
+
+setMessages((current) =>
+  mergeMessages(current, page.items).filter(
+    (message) => message.seq > hiddenThroughRef.current,
+  ),
+)
+setNextBeforeSeq(page.next_before_seq)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Не удалось загрузить историю')
     } finally {
@@ -403,7 +423,11 @@ useEffect(() => {
       }
 
       const message = (await response.json()) as Message
-      setMessages((current) => mergeMessages(current, [message]))
+      setMessages((current) =>
+  mergeMessages(current, [message]).filter(
+    (item) => item.seq > hiddenThroughRef.current,
+  ),
+)
       setText('')
       pendingRef.current = null
     } catch (err) {
@@ -413,6 +437,60 @@ useEffect(() => {
       setSending(false)
     }
   }
+
+  async function clearHistory() {
+  if (loading || clearingRef.current) return
+
+  const confirmed = window.confirm(
+    'Очистить историю только для себя? У других участников сообщения останутся. Сообщения не удаляются из базы.',
+  )
+  if (!confirmed) return
+
+  clearingRef.current = true
+  setClearing(true)
+  setError('')
+
+  try {
+    const response = await fetch(`/chats/${chat.id}/history/clear`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+
+    if (!response.ok) {
+      throw await errorFromResponse(response)
+    }
+
+    const data: unknown = await response.json()
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('cleared_through_seq' in data) ||
+      typeof data.cleared_through_seq !== 'number' ||
+      !Number.isSafeInteger(data.cleared_through_seq) ||
+      data.cleared_through_seq < 0
+    ) {
+      throw new Error('Некорректный ответ сервера. Переоткройте чат и проверьте историю.')
+    }
+
+    const cutoff = data.cleared_through_seq
+    hiddenThroughRef.current = Math.max(hiddenThroughRef.current, cutoff)
+    syncedSeqRef.current = Math.max(syncedSeqRef.current, cutoff)
+    historyGenerationRef.current++
+
+    setMessages((current) =>
+      current.filter((message) => message.seq > hiddenThroughRef.current),
+    )
+    setNextBeforeSeq(null)
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : 'Неизвестная ошибка'
+    setError(
+      `${detail}. Если ответ потерялся, переоткройте чат и проверьте историю перед повторной очисткой.`,
+    )
+  } finally {
+    clearingRef.current = false
+    setClearing(false)
+  }
+}
 
   const title = chat.type === 'group' ? chat.name || 'Группа' : 'Личный чат'
 
@@ -427,6 +505,15 @@ useEffect(() => {
           <p className="muted">ID: {chat.id.slice(0, 8)}</p>
         </div>
       </div>
+
+      <button
+  className="secondary"
+  type="button"
+  onClick={clearHistory}
+  disabled={loading || clearing}
+>
+  {clearing ? 'Очищаем…' : 'Очистить историю для себя'}
+</button>
 
       {error && <p className="message error" role="alert">{error}</p>}
 
